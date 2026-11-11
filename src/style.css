@@ -1,0 +1,278 @@
+:root { --sea: #2aa6b8; --ink: #143b45; --gold: #ffd24a; --wood: #6b4a2b; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden; background: var(--sea);
+  font-family: 'Lilita One', system-ui, sans-serif;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; overscroll-behavior: none;
+}
+#game canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* Left part of the screen: touch anywhere and drag to steer. */
+#zone { position: fixed; left: 0; top: 0; bottom: 0; width: 55%; }
+#stick {
+  position: fixed; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .16);
+  opacity: 0; transition: opacity .15s; pointer-events: none;
+}
+#stick.on { opacity: 1; }
+#knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px; border-radius: 50%; background: #fff; border: 4px solid var(--ink); }
+#hint {
+  position: fixed; left: calc(24px + env(safe-area-inset-left)); bottom: calc(26px + env(safe-area-inset-bottom));
+  color: #fff; font-size: 20px; text-shadow: 0 2px 0 var(--ink); pointer-events: none; transition: opacity .4s;
+}
+#hint.gone { opacity: 0; }
+
+/* Cannon buttons: the fill shows the reload. */
+.fire {
+  position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); width: 96px; height: 96px; padding: 0;
+  border-radius: 50%; border: 5px solid var(--ink); color: #fff; font: inherit; cursor: pointer;
+  --ready: 1;
+  background: linear-gradient(to top, var(--gold) calc(var(--ready) * 100%), var(--wood) calc(var(--ready) * 100%));
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1;
+  text-shadow: 0 2px 0 var(--ink); box-shadow: 0 4px 0 rgba(0, 0, 0, .25);
+}
+.fire b { font-weight: normal; font-size: 26px; }
+.fire span { font-size: 16px; }
+.fire:active { transform: translateY(2px); }
+#fireL { right: calc(136px + env(safe-area-inset-right)); }
+#fireR { right: calc(22px + env(safe-area-inset-right)); }
+@media (pointer: fine) { .fire::after { content: attr(data-key); position: absolute; top: -12px; right: -4px; background: var(--ink); border-radius: 8px; padding: 3px 8px; font-size: 15px; } }
+
+/* Top-left: hull health and gold. */
+#hud { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: calc(14px + env(safe-area-inset-left)); max-width: calc(50% - 125px - env(safe-area-inset-left)); /* stays clear of the compass in the middle: what doesn't fit drops to a second line */ display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; pointer-events: none; }
+#hull { width: 170px; height: 22px; border-radius: 11px; border: 4px solid var(--ink); background: #2c4a52; overflow: hidden; box-shadow: 0 3px 0 rgba(0, 0, 0, .25); }
+#hull i { display: block; height: 100%; width: 100%; background: #5bd16a; border-radius: 6px; transition: width .2s; }
+#hull.low i { background: #ff7a4a; }
+#hull.hit { animation: shake .25s; }
+#hull.heal { animation: heal .6s; }
+@keyframes heal { 30% { box-shadow: 0 0 0 5px #b9f5c0, 0 3px 0 rgba(0, 0, 0, .25); transform: scale(1.06); } }
+@keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+#gold { display: flex; align-items: center; gap: 6px; color: #fff; font-size: 26px; text-shadow: 0 2px 0 var(--ink); }
+.coin { width: 24px; height: 24px; border-radius: 50%; background: var(--gold); border: 3px solid var(--ink); }
+#gold.pop b { animation: pop .25s; display: inline-block; }
+@keyframes pop { 50% { transform: scale(1.35); } }
+
+/* Pirate health bars, placed over each pirate from code. */
+#bars { position: fixed; inset: 0; pointer-events: none; }
+.ebar { position: absolute; left: 0; top: 0; width: 50px; height: 10px; border-radius: 5px; border: 3px solid var(--ink); background: #2c4a52; overflow: hidden; }
+.ebar i { display: block; height: 100%; background: #ff5a4a; }
+
+/* Big message in the middle ("Your ship sank!"). */
+#banner {
+  position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%) scale(.8); opacity: 0; transition: opacity .3s, transform .3s;
+  color: #fff; font-size: 40px; text-align: center; text-shadow: 0 3px 0 var(--ink); pointer-events: none; white-space: nowrap;
+}
+#banner small { display: block; font-size: 20px; }
+#banner.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+/* End of a battle: "Victory!" or "Sunk!" with a button to go again. */
+#panel {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(20, 59, 69, .35); opacity: 0; pointer-events: none; transition: opacity .3s;
+}
+#panel.on { opacity: 1; pointer-events: auto; }
+.card {
+  background: #fff7e6; border: 5px solid var(--ink); border-radius: 24px; padding: 12px 30px 18px; max-width: calc(100vw - 24px);
+  text-align: center; color: var(--ink); box-shadow: 0 6px 0 rgba(0, 0, 0, .25);
+  transform: scale(.85); transition: transform .3s;
+}
+#panel.on .card { transform: scale(1); }
+.card h1 { margin: 0; font-weight: normal; font-size: 42px; color: var(--gold); text-shadow: 0 3px 0 var(--ink); -webkit-text-stroke: 1.5px var(--ink); }
+#panel.lost h1 { color: #ff7a4a; }
+.card p { margin: 4px 0 12px; font-size: 19px; line-height: 1.3; }
+.card p b { font-weight: normal; color: #c98a00; }
+.buttons { display: flex; gap: 12px; justify-content: center; }
+.go {
+  font: inherit; font-size: 24px; color: #fff; text-shadow: 0 2px 0 var(--ink); cursor: pointer;
+  background: #5bd16a; border: 5px solid var(--ink); border-radius: 18px; padding: 8px 30px; box-shadow: 0 4px 0 rgba(0, 0, 0, .25);
+}
+.go:active, .tile:active { transform: translateY(2px); }
+
+.go.wood { background: #b07a45; }
+.go.quiet { background: #fff; color: var(--ink); text-shadow: none; font-size: 18px; padding: 8px 16px; }
+
+/* The title screen: the name over the sea, the ship sailing lazy circles behind. */
+#title {
+  position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  color: #fff; text-shadow: 0 3px 0 var(--ink); text-align: center; padding: 20px;
+  background: radial-gradient(ellipse at center, rgba(20, 59, 69, .35), transparent 70%);
+}
+#title.on { display: flex; }
+#title h1 {
+  margin: 0; font-weight: normal; font-size: min(96px, 18vw); line-height: 1; color: var(--gold);
+  -webkit-text-stroke: 3px var(--ink); text-shadow: 0 6px 0 var(--ink); animation: bob 3s ease-in-out infinite;
+}
+@keyframes bob { 50% { transform: translateY(-6px) rotate(-1deg); } }
+#title p { margin: 0 0 10px; font-size: 20px; }
+#title .chest { margin: 12px 0 0; display: flex; align-items: center; gap: 8px; }
+#title .chest b { font-weight: normal; color: var(--gold); }
+body.home .fire, body.home #hud, body.home #hint, body.home #zone { display: none; }
+@media (max-height: 420px) { #title h1 { font-size: 72px; } #title p { margin-bottom: 6px; } }
+
+/* Shipyard levels: five dots under each upgrade. */
+.dots { display: flex; gap: 4px; margin: 2px 0; }
+.dots s { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); background: #e6dccb; }
+.dots s.on { background: #5bd16a; }
+
+/* Gear and port choices: a row of big tappable tiles. */
+.tiles { display: flex; gap: 10px; justify-content: center; margin-bottom: 14px; }
+.tile {
+  width: 132px; padding: 10px 8px; border: 4px solid var(--ink); border-radius: 16px; background: #fff; cursor: pointer;
+  font: inherit; color: var(--ink); display: flex; flex-direction: column; align-items: center; gap: 3px; box-shadow: 0 4px 0 rgba(0, 0, 0, .2);
+}
+.tile svg { width: 40px; height: 40px; fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; background: var(--gold); border-radius: 12px; padding: 5px; }
+.tile b { font-weight: normal; font-size: 18px; }
+.tile span { font-size: 13px; line-height: 1.15; opacity: .8; }
+.tile em { font-style: normal; font-size: 16px; color: #c98a00; }
+.tile:disabled { opacity: .4; cursor: default; transform: none; }
+@media (max-height: 420px) { .card h1 { font-size: 34px; } .tile svg { width: 34px; height: 34px; } }
+
+/* The sea chart: the whole ocean as an old map, filled in where you've sailed. */
+#chart {
+  position: fixed; inset: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+  background: #f3e2bf; border: 5px solid var(--ink); border-radius: 24px; box-shadow: 0 6px 0 rgba(0, 0, 0, .25), inset 0 0 0 6px #e6cf9f;
+  display: none; align-items: center; justify-content: center; gap: 18px; color: var(--ink); padding: 12px;
+}
+#chart.on { display: flex; z-index: 3; }
+#chart .node text.name { text-anchor: start; font-size: 26px; }
+#chart .sea { position: relative; height: 100%; aspect-ratio: 1; border: 4px solid var(--ink); border-radius: 12px; overflow: hidden; }
+#chart .sea canvas, #chart .sea svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+#chart .side { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 220px; text-align: center; }
+#chart h2 { margin: 0; font-weight: normal; font-size: 30px; }
+#chart p { margin: 0; font-size: 17px; }
+#chart .region { font-family: 'Lilita One', system-ui, sans-serif; font-size: 95px; fill: #fff; stroke: var(--ink); stroke-width: 14px; paint-order: stroke; text-anchor: middle; }
+#chart .you { fill: #ff5a4a; stroke: var(--ink); stroke-width: 12px; stroke-linejoin: round; }
+.node > circle { fill: #fff7e6; stroke: var(--ink); stroke-width: 4; }
+.node g { fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.node text { font-family: 'Lilita One', system-ui, sans-serif; font-size: 19px; fill: #fff; stroke: var(--ink); stroke-width: 4px; paint-order: stroke; text-anchor: middle; }
+
+/* The compass, top middle: points the way to the nearest port. */
+#compass {
+  position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); pointer-events: none;
+  display: flex; align-items: center; gap: 8px; padding: 4px 14px 4px 5px; border: 4px solid var(--ink); border-radius: 22px;
+  background: #fff7e6; color: var(--ink); font-size: 18px; white-space: nowrap; box-shadow: 0 3px 0 rgba(0, 0, 0, .25);
+}
+#compass i { width: 30px; height: 30px; border-radius: 50%; background: var(--gold); border: 3px solid var(--ink); display: block; }
+#compass svg { width: 100%; height: 100%; display: block; fill: #ff5a4a; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+body.home #compass { display: none; }
+@media (max-width: 700px) { #compass { font-size: 16px; } }
+
+/* Near a port: a big button to go into port. */
+#visit { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: none; white-space: nowrap; }
+#visit.on { display: block; animation: beckon 1.2s ease-in-out infinite; }
+@keyframes beckon { 50% { box-shadow: 0 4px 0 rgba(0, 0, 0, .25), 0 0 0 6px rgba(255, 210, 74, .6); } }
+
+/* Gear you carry, beside the gold. */
+#gear { display: flex; gap: 5px; }
+#gear i { width: 30px; height: 30px; border-radius: 9px; background: var(--gold); border: 3px solid var(--ink); padding: 2px; display: block; }
+#gear svg { width: 100%; height: 100%; fill: none; stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; display: block; }
+
+/* The Kraken's health at the top, with a dot for each tentacle still fighting this round. */
+#boss {
+  position: fixed; top: calc(62px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(340px, 50vw);
+  display: none; flex-direction: column; align-items: center; gap: 4px; color: #fff; font-size: 20px; text-shadow: 0 2px 0 var(--ink); pointer-events: none;
+}
+#boss.on { display: flex; }
+#boss b { font-weight: normal; }
+#boss .bar { width: 100%; height: 18px; border-radius: 9px; border: 4px solid var(--ink); background: #2c4a52; overflow: hidden; }
+#boss .bar i { display: block; height: 100%; width: 100%; background: #b06ad8; transition: width .2s; }
+#boss .pips { display: flex; gap: 6px; }
+#boss .pips span { width: 14px; height: 14px; border-radius: 50%; background: #b06ad8; border: 3px solid var(--ink); }
+#boss .pips span.out { background: #2c4a52; }
+
+/* Kraken ink: dark blots that cover part of the screen for a few seconds. */
+#ink { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s; }
+#ink.on { opacity: 1; transition: opacity .15s; }
+#ink span { position: absolute; width: 30vmax; height: 30vmax; border-radius: 50%; background: radial-gradient(circle, #1a1030 0 45%, rgba(26, 16, 48, .85) 60%, transparent 70%); transform: translate(-50%, -50%); }
+
+/* Storm Belt: slanting rain, lightning flashes, and the wind arrow. */
+#rain {
+  position: fixed; inset: 0; pointer-events: none; display: none; opacity: .5;
+  background:
+    repeating-linear-gradient(100deg, transparent 0 22px, rgba(220, 235, 245, .35) 22px 23px, transparent 23px 47px),
+    repeating-linear-gradient(104deg, transparent 0 31px, rgba(220, 235, 245, .25) 31px 32px, transparent 32px 70px);
+  background-size: 200px 200px, 260px 260px; animation: rain .35s linear infinite;
+}
+#rain.on { display: block; }
+@keyframes rain { to { background-position: -40px 200px, -50px 260px; } }
+#flash { position: fixed; inset: 0; pointer-events: none; background: #fff; opacity: 0; }
+#flash.on { animation: flash .6s; }
+@keyframes flash { 5% { opacity: .55; } 15% { opacity: .1; } 22% { opacity: .4; } 100% { opacity: 0; } }
+#wind {
+  position: fixed; top: calc(122px + env(safe-area-inset-top)); left: 50%; width: 90px; height: 34px; pointer-events: none;
+  display: none; transform-origin: 50% 50%;
+  background: var(--gold); clip-path: polygon(0 35%, 65% 35%, 65% 0, 100% 50%, 65% 100%, 65% 65%, 0 65%);
+  filter: drop-shadow(0 3px 0 var(--ink)); animation: blink .4s infinite alternate;
+}
+#wind.on { display: block; }
+#wind.blow { animation: none; }
+@keyframes blink { to { opacity: .35; } }
+
+/* Arrows at the screen edge pointing at chests you can't see yet. */
+#marks { position: fixed; inset: 0; pointer-events: none; }
+.mark { position: absolute; left: 0; top: 0; width: 0; height: 0; border-left: 26px solid var(--gold); border-top: 15px solid transparent; border-bottom: 15px solid transparent; filter: drop-shadow(0 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)); }
+
+/* Music and sound on/off, top-right. */
+#audio { position: fixed; top: calc(12px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); display: flex; gap: 10px; }
+.round {
+  width: 46px; height: 46px; padding: 9px; border-radius: 50%; border: 4px solid var(--ink);
+  background: #fff; cursor: pointer; box-shadow: 0 3px 0 rgba(0, 0, 0, .25); position: relative;
+}
+.round svg { width: 100%; height: 100%; fill: none; stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.round.off { opacity: .55; }
+.round.off::after { content: ''; position: absolute; left: 50%; top: 6px; bottom: 6px; width: 4px; margin-left: -2px; background: #d8452e; border-radius: 2px; transform: rotate(45deg); }
+
+/* Phones held upright: ask to turn them. */
+#rotate { position: fixed; inset: 0; background: var(--sea); color: #fff; display: none; align-items: center; justify-content: center; text-align: center; font-size: 30px; text-shadow: 0 3px 0 var(--ink); padding: 24px; }
+#rotate small { font-size: 18px; }
+@media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
+
+/* The story: the goal line under the compass, and the compass turns gold when it points at the goal. */
+#goal {
+  position: fixed; top: calc(60px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); pointer-events: none;
+  color: #fff; font-size: 17px; text-shadow: 0 2px 0 var(--ink); white-space: nowrap;
+}
+#goal:empty, body.home #goal { display: none; }
+#compass.quest { background: var(--gold); }
+#compass.quest i { background: #fff7e6; }
+#chart .goal circle { fill: var(--gold); stroke: var(--ink); stroke-width: 12px; animation: beckon-goal 1.2s ease-in-out infinite; }
+#chart .goal text { font-family: 'Lilita One', system-ui, sans-serif; font-size: 80px; fill: var(--ink); text-anchor: middle; }
+@keyframes beckon-goal { 50% { stroke-width: 26px; } }
+#chart p.goal { color: #c98a00; font-size: 19px; }
+
+/* Chats: a portrait and words in a box at the bottom; tap anywhere for the next line. */
+#talk { position: fixed; inset: 0; z-index: 4; display: none; align-items: flex-end; justify-content: center; padding: 0 12px calc(14px + env(safe-area-inset-bottom)); background: rgba(20, 59, 69, .3); cursor: pointer; }
+#talk.on { display: flex; }
+#talk .box {
+  display: flex; gap: 14px; align-items: center; width: min(720px, 100%); padding: 12px 18px 12px 12px;
+  background: #fff7e6; border: 5px solid var(--ink); border-radius: 22px; box-shadow: 0 6px 0 rgba(0, 0, 0, .25); color: var(--ink);
+  animation: rise .25s ease-out;
+}
+@keyframes rise { from { transform: translateY(30px); opacity: 0; } }
+#talk .face { flex: none; width: 96px; height: 96px; border-radius: 18px; background: #bfe6ec; border: 4px solid var(--ink); overflow: hidden; }
+#talk .face svg { width: 100%; height: 100%; display: block; }
+#talk b { font-weight: normal; font-size: 22px; color: #c98a00; }
+#talk p { margin: 2px 0 4px; font-size: 19px; line-height: 1.3; }
+#talk small { font-size: 14px; opacity: .6; }
+@media (max-height: 420px) { #talk .face { width: 76px; height: 76px; } #talk p { font-size: 17px; } }
+
+/* Lines under a boss's bar: what it says or does. */
+#bark {
+  position: fixed; top: calc(150px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(520px, 80vw);
+  display: none; text-align: center; color: #fff; font-size: 17px; line-height: 1.25; text-shadow: 0 2px 0 var(--ink); pointer-events: none;
+}
+#bark.on { display: block; animation: rise .25s ease-out; }
+@media (max-height: 420px) { #bark { top: calc(128px + env(safe-area-inset-top)); font-size: 15px; } }
+
+/* Chats: two answers to pick from, and a ghost's see-through box. */
+#talk .choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+#talk .choices .go { font-size: 16px; padding: 7px 14px; text-align: left; }
+#talk .box.ghost { background: #e6f7f7; }
+.card p i { display: inline-block; margin-top: 6px; font-size: 16px; opacity: .85; }
+
+/* Side stories: the compass turns blue for one (tap it to switch goals), and their marks on the chart. */
+#compass { pointer-events: auto; cursor: pointer; }
+#compass.side { background: #9fd8f0; }
+#compass.side i { background: #fff7e6; }
+#chart .goal.side circle { fill: #9fd8f0; }
+#chart p.goal.side { color: #2f7fa8; font-size: 16px; }
