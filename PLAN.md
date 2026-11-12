@@ -2,7 +2,7 @@
 
 Chosen 2026-11-11. Third game, after River Puzzle and Tidebound. Built from a copy of Tidebound.
 
-**Progress:** Milestones 1 to 3 played on the phone 2026-11-11. Milestones 4 to 6 (story), the lore bible's main story, and its 8 side stories (src/sidequests.js: 3 new settlements, guarded places, a hunt, a powder run, an escort, 7 reward gears and a gear hold) built the same day, played on the phone. Published 2026-11-11 at https://sheshadharihariharan.github.io/saltwind/ (repo github.com/sheshadharihariharan/saltwind). 2026-11-12: built (not yet live) trade-wind currents (src/currents.js), places to find (pirate camps, sea forts, stranded sailors, bottles with treasure maps), a living sea (src/life.js) and busier seas (wanted pirates with bounties, pirate fleets). Also 2026-11-12 (not yet live): enemies scale with your shipyard levels and the end of the story (up to double health, 1.6x damage, half the crates), more wanted pirates and fleets after the story, legendary boss rematches that win special sails, a Harbour Fund to rebuild Home Harbour (src/harbour.js), and the Sailmaker's liveries. Still to do: balancing.
+**Progress:** Milestones 1 to 3 played on the phone 2026-11-11. Milestones 4 to 6 (story), the lore bible's main story, and its 8 side stories (src/sidequests.js: 3 new settlements, guarded places, a hunt, a powder run, an escort, 7 reward gears and a gear hold) built the same day, played on the phone. Published 2026-11-11 at https://sheshadharihariharan.github.io/saltwind/ (repo github.com/sheshadharihariharan/saltwind). 2026-11-12: built and pushed live trade-wind currents (src/currents.js), places to find (pirate camps, sea forts, stranded sailors, bottles with treasure maps), a living sea (src/life.js) and busier seas (wanted pirates with bounties, pirate fleets). Also 2026-11-12: enemies scale with your shipyard levels and the end of the story (up to double health, 1.6x damage, half the crates), more wanted pirates and fleets after the story, legendary boss rematches that win special sails, a Harbour Fund to rebuild Home Harbour (src/harbour.js), and the Sailmaker's liveries. Pushed live 2026-11-12 (fc9e140), with panels that fit short screens and dolphins that swim their own course. Also live 2026-11-12 (6edcb52): each chunk's still scenery merged into one mesh (Reef lag fix) and a western current from Lantern Spire to Floe-Edge Camp. Still to do: balancing.
 
 ## Context
 Tidebound is finished and live: 3 voyages, 3 bosses, a shipyard and saving. The user loves it and wants the next game, **Saltwind**. Unlike Tidebound's short voyages, Saltwind is an **open world**: one large ocean you sail around freely, with a simple **story** running through it.
@@ -122,11 +122,11 @@ Ideas that come up while building go here, not into the current milestone.
 - ~~More settlements~~, ~~delivery missions~~, ~~convoy guarding~~ and ~~short stories for each region~~: done as the side stories (2026-11-11).
 
 **Ideas suggested by Claude (2026-11-11), not chosen yet:**
-- **Messages in bottles:** bottles float by with a torn map; follow the clues to dig up buried treasure on an island.
-- **Bounty board:** each port posts a named pirate captain (a tougher, unique enemy) to hunt for big gold.
+- ~~**Messages in bottles:**~~ (done 2026-11-12, as bottles with treasure maps) bottles float by with a torn map; follow the clues to dig up buried treasure on an island.
+- **Bounty board** (partly there: wanted pirates roam with bounties): each port posts a named pirate captain (a tougher, unique enemy) to hunt for big gold.
 - **Captain's logbook:** a book that fills in as you meet creatures, bosses, ports and people, with a line of lore for each.
 - **Day and night:** lanterns on ships at night, darker water, anglerfish lures that matter more.
 - **Bigger ships:** buy a brig or a frigate at a shipyard, with more hull, more cannons and more gear slots.
 - **Crew:** hire a gunner, navigator or carpenter at ports for a small bonus each (faster reload, faster sails, slow self-repair).
-- **Sail colours and flags:** spend spare gold on how the ship looks.
-- **Legendary bosses:** after the story, each boss can be fought again, harder, for a rare reward.
+- ~~**Sail colours and flags:**~~ (done 2026-11-12, the Sailmaker) spend spare gold on how the ship looks.
+- ~~**Legendary bosses:**~~ (done 2026-11-12) after the story, each boss can be fought again, harder, for a rare reward.
