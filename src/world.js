@@ -3,6 +3,7 @@
 // Each builder adds its meshes to a chunk ({ group, hits, rings, sandbars }, see chunks.js) and records
 // what ships bump into. Also the drifting foam dashes that make the water look like it is moving.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { toon, flat } from './stage.js';
 
 const ROCK = new THREE.IcosahedronGeometry(1, 0);
@@ -25,6 +26,38 @@ const trunkMat = mat(0x7a5230), leafMat = mat(0x2f9a4a), pineMat = mat(0x2e6b4f)
 const foamMat = flat(0.55), sandbarMat = flat(0.55, 0xf6e3b4), sandbarEdge = flat(0.35, 0xffffff);
 const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff1a8 });
 const iceMat = mat(0xf4fbff), deepIceMat = mat(0xa9d8ea);
+
+// One material for a whole chunk's baked pieces: each piece keeps its colour as vertex colours.
+const bakedMat = toon(0xffffff, { vertexColors: true });
+
+// Fold a chunk's still, solid pieces (rocks, coral, islands, trees, towns...) into a single mesh, so a phone draws
+// one thing per chunk instead of hundreds. Anything marked userData.keep (it moves or can vanish) stays as it is,
+// as do see-through and glowing pieces. Returns the merged geometry (to dispose of with the chunk), or null.
+export function bake(c) {
+  c.group.updateMatrixWorld(true);
+  const parts = [], baked = [];
+  const walk = (o) => {
+    if (o.userData.keep) return;
+    if (o.isMesh && o.material.isMeshToonMaterial) {
+      const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal') g.deleteAttribute(name);
+      g.applyMatrix4(o.matrixWorld);
+      const n = g.attributes.position.count, col = new Float32Array(n * 3), { r, g: gr, b } = o.material.color;
+      for (let i = 0; i < n; i++) { col[i * 3] = r; col[i * 3 + 1] = gr; col[i * 3 + 2] = b; }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      parts.push(g);
+      baked.push(o);
+    }
+    o.children.forEach(walk);
+  };
+  c.group.children.forEach(walk);
+  if (!parts.length) return null;
+  const merged = mergeGeometries(parts);
+  parts.forEach((g) => g.dispose());
+  baked.forEach((o) => o.parent.remove(o));
+  c.group.add(new THREE.Mesh(merged, bakedMat));
+  return merged;
+}
 
 // Same numbers, same sea, every time.
 export function seeded(i, j) {
@@ -95,6 +128,7 @@ export function berg(c, x, z, r, rnd) {
   top.rotation.y = rnd() * 6;
   g.add(base, top);
   g.position.set(x, 0, z);
+  g.userData.keep = true; // it drifts
   const ring = new THREE.Mesh(RING, foamMat);
   ring.position.set(x, 0.03, z);
   c.group.add(g, ring);
@@ -180,6 +214,7 @@ export function castaway(c, x, z, rnd, look) {
   arm.position.set(0.25, 1.45, 0);
   person.add(body, head, arm);
   person.position.set(x, 0, z);
+  person.userData.keep = true; // waves, and is gone once rescued
   c.group.add(person);
   return { person, arm };
 }
@@ -193,6 +228,7 @@ export function bottle(c, x, z) {
   cork.position.set(0.45, 0.15, 0);
   g.add(glass, cork);
   g.position.set(x, 0.15, z);
+  g.userData.keep = true; // bobs, and is gone once picked up
   c.group.add(g);
   foamRing(c, x, z, 0.7, Math.random);
   return g;

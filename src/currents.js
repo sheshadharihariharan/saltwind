@@ -4,7 +4,8 @@ import * as THREE from 'three';
 import { flat } from './stage.js';
 import { PORTS, toWorld, toMap } from './map.js';
 
-const LINKS = [['home', 'reef'], ['reef', 'storm'], ['storm', 'castaway'], ['castaway', 'frozen'], ['frozen', 'floe'], ['home', 'abyss']];
+const LINKS = [['home', 'reef'], ['reef', 'storm'], ['storm', 'castaway'], ['castaway', 'frozen'], ['frozen', 'floe'], ['home', 'abyss'],
+  ['abyss', 'floe']]; // the last one runs up the west side, from the Abyss to the Frozen North
 const END = 40; // lanes start and stop this far out from each port
 export const WIDTH = 7; // half the width of a lane
 export const BOOST = 2; // how much faster you sail along one

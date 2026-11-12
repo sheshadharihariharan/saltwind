@@ -2,7 +2,7 @@
 // Every chunk is built from the same fixed seed, so islands and rocks are always in the same place.
 // Also answers what ships and cannonballs bump into, and raises the rocks that shut you in with a boss.
 import * as THREE from 'three';
-import { seeded, rock, coral, sandbar, island, town, berg, wreck, camp, fort, castaway, bottle } from './world.js';
+import { seeded, rock, coral, sandbar, island, town, berg, wreck, camp, fort, castaway, bottle, bake } from './world.js';
 import { laneDistance, WIDTH } from './currents.js';
 import { BOUND, toMap, toWorld, regionAt, REGIONS, PORTS, PORT_CLEAR, LAIRS, LAIR_RING } from './map.js';
 import { QUEST_SPOTS } from './sidequests.js';
@@ -143,6 +143,7 @@ export function createOcean(scene, on) {
       if (open(x, z) && spots.every((s) => Math.hypot(s.x - x, s.z - z) > r + 6)) sandbar(c, x, z, r);
     }
 
+    c.baked = bake(c); // one mesh for all the still pieces
     scene.add(c.group);
     chunks.set(`${i},${j}`, c);
     on.load(c);
@@ -158,6 +159,7 @@ export function createOcean(scene, on) {
     for (const [k, c] of chunks) {
       if (Math.abs(c.i - ci) > DROP || Math.abs(c.j - cj) > DROP) {
         scene.remove(c.group);
+        c.baked?.dispose();
         chunks.delete(k);
         on.unload(c);
       }

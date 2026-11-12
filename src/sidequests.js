@@ -91,7 +91,7 @@ export const QUESTS = {
     goal: 'Hunt the Elder Anglers at the false lights',
     sites: [
       { name: 'First false light', at: [-800, -350], guards: [['angler', 'Elder Angler'], 'ghost'], prize: 'A prism-lamp' },
-      { name: 'Second false light', at: [-620, -60], guards: [['angler', 'Elder Angler'], 'ghost'], prize: 'A prism-lamp' },
+      { name: 'Second false light', at: [-720, -40], guards: [['angler', 'Elder Angler'], 'ghost'], prize: 'A prism-lamp' },
       { name: 'Third false light', at: [-880, -620], guards: [['angler', 'Elder Angler'], 'ghost', 'angler'], prize: 'A prism-lamp' },
     ],
     start: [
