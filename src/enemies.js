@@ -76,6 +76,9 @@ const ROPE = new THREE.CylinderGeometry(0.04, 0.04, 1, 4).translate(0, 0.5, 0);
 const AIM = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0.5, 0, 0);
 const up = new THREE.Vector3(0, 1, 0), span = new THREE.Vector3();
 
+// Kinds that stand still: no wind, bumps or steering move them.
+export const STILL = ['tower', 'fortTower'];
+
 export const BOSSES = { kraken: createKraken, crab: createCrab, flagship: createFlagship, serpent: createSerpent, galleon: createGalleon,
   blacktide: (...args) => createFlagship(...args, BLACK_TIDE) };
 
@@ -745,7 +748,7 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
         if (s.sinking >= 0) continue;
       }
       // Steer around rocks a few lengths ahead (a charging shark doesn't look).
-      const still = e.kind === 'tower' || e.kind === 'fortTower';
+      const still = STILL.includes(e.kind);
       if (!still && e.mode !== 'charge' && !world.clearAt(s.x + Math.cos(want) * 4, s.z + Math.sin(want) * 4, 1)) want += 1.3 * e.roam;
       e.body.update(dt, t, want, throttle);
       if (!still) world.collide(s, e.kind === 'turtle' ? 1.3 : 1);
@@ -771,7 +774,7 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
   function separate(p) {
     // Jellyfish are soft and eels swim underneath, so ships pass through them.
     const all = [p, ...list.filter((e) => e.body.state.sinking < 0 && e.kind !== 'jelly' && e.kind !== 'eel')];
-    const fixed = (a) => a !== p && (a.kind === 'tower' || a.kind === 'fortTower'); // towers don't get pushed
+    const fixed = (a) => a !== p && STILL.includes(a.kind); // towers don't get pushed
     const state = (a) => (a === p ? p : a.body.state);
     for (let i = 0; i < all.length; i++) {
       for (let j = i + 1; j < all.length; j++) {

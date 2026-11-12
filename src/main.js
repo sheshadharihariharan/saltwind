@@ -7,7 +7,7 @@ import { createShip, PLAYER_STATS } from './ship.js';
 import { createFoam } from './world.js';
 import { createOcean } from './chunks.js';
 import { createEffects } from './effects.js';
-import { createEnemies } from './enemies.js';
+import { createEnemies, STILL } from './enemies.js';
 import { createLoot } from './loot.js';
 import { createRoamers, RAID } from './roam.js';
 import { createWeather } from './weather.js';
@@ -1075,7 +1075,7 @@ function frame(dt) {
       p.vz += ((dx / d) + (dz / d) * 0.3) * CURRENT * dt;
     }
     updateFight(dt);
-    weather.update(dt, time, [p, ...enemies.list.map((e) => e.body.state)], stage.camera);
+    weather.update(dt, time, [p, ...enemies.list.filter((e) => !STILL.includes(e.kind)).map((e) => e.body.state)], stage.camera); // towers don't blow away
     const got = loot.update(dt, time, p, stage.camera, fight?.won != null); // a beaten boss's gold all comes to you
     if (got.repair) repair(got.repair);
     if (got.gold) {
