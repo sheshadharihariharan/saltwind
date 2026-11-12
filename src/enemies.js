@@ -11,9 +11,10 @@
 //   raider (Frozen North): an ice-breaker with an iron prow; a red strip warns, then it rams you.
 //   ghost (Abyss): a see-through pirate that fades away (cannonballs pass through) and back again to fire.
 //   angler (Abyss): lurks under the water with only its glowing lure showing, then lunges up to bite.
+//   tower / fortTower: the cannon tower of a pirate camp or a sea fort. Stands still and fires at you when close.
 import * as THREE from 'three';
 import { createShip, wrap } from './ship.js';
-import { createTurtle, createShark, createMines, createJelly, createPuffer, PUFF_REACH, createFlames, createEel, createAngler } from './creatures.js';
+import { createTurtle, createShark, createMines, createJelly, createPuffer, PUFF_REACH, createFlames, createEel, createAngler, createTower } from './creatures.js';
 import { createKraken } from './kraken.js';
 import { createCrab } from './crab.js';
 import { createFlagship } from './flagship.js';
@@ -55,6 +56,7 @@ const RAM_CHARGE = { aim: 1.2, charge: 1.3, rest: 2.8, damage: 14, push: 8, reac
 const GHOST = { look: { hull: 0x8fd0bd, deck: 0xcfeee4, sail: 0xeafff8, stripe: 0x5fae98, flag: 0x5fae98 }, stats: { maxSpeed: 5.5, turn: 2, reload: 2.6, hp: 30 } };
 const HAUNT = { show: [5, 7], fade: 2.6, seen: 0.75, unseen: 0.07, lantern: 0.3 }; // a ghost ship: seconds seen, seconds faded, opacity
 const BITE = { near: 4.5, lunge: 0.6, up: 3, rest: 2, damage: 12 }; // an anglerfish's bite, in seconds
+const TOWER = { reach: 17, every: 2.6, lead: 0.5 }; // a cannon tower fires this far, this often, aiming a little ahead
 const PROW = new THREE.ConeGeometry(0.5, 1.4, 4).rotateZ(-Math.PI / 2);
 const STRIP_GEO = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0.5, 0, 0);
 const ELITE = { hp: 3, size: 1.25, gold: 3 }; // a named enemy: three times as tough, a bit bigger, three times the gold
@@ -74,7 +76,7 @@ const RAM = 12; // damage when you sail into an enemy with ram spikes
 // api.shoot(shots, dist): a sloop fires cannonballs at the player.
 // api.hurtPlayer(amount, x, y, z): something other than a cannonball hit the player.
 // api.ink(), api.shake(amount): the Kraken's ink on the screen, and a camera shake.
-// api.slowPlayer(seconds): a jellyfish sting. api.sunk(kind): an enemy was sunk.
+// api.slowPlayer(seconds): a jellyfish sting. api.sunk(kind): an enemy was sunk. api.bounty(name, gold): a wanted pirate was.
 // An enemy can be sent after another ship instead of the player (e.target: that ship's state, with hurtBy(amount)).
 export function createEnemies(scene, world, fx, loot, api, gear) {
   const list = [];
@@ -106,6 +108,8 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
     raider: { gold: 7, barY: 3.3, hitColor: 0x8a5a33, make: makeRaider, think: raider },
     ghost: { gold: 6, barY: 3.3, hitColor: 0x8fd0bd, make: makeGhost, think: ghost },
     angler: { gold: 5, barY: 2.4, hitColor: 0x3a3550, make: () => createAngler(scene), think: angler },
+    tower: { gold: 8, barY: 4.8, hitColor: 0x8a5a33, make: () => createTower(scene, false), think: tower },
+    fortTower: { gold: 12, barY: 5, hitColor: 0x9a948b, make: () => createTower(scene, true), think: tower },
   };
 
   // An ice-breaker: an iron prow on the bow and a red strip on the water before it rams.
@@ -243,6 +247,10 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
       if (e.kind === 'fireship') explode(e);
       const g = KINDS[e.kind].gold * (e.elite ? ELITE.gold : 1);
       loot.drop(s.x, s.z, g - 1 + Math.floor(Math.random() * 3));
+      if (e.bounty) { // a wanted pirate: the bounty spills out too
+        loot.drop(s.x, s.z, e.bounty / 5);
+        api.bounty?.(e.elite, e.bounty);
+      }
       // A repair crate: sometimes, and always from the last enemy left afloat.
       if (Math.random() < CRATE_CHANCE || alive() === 0) loot.crate(s.x, s.z);
       if (e.kind === 'shark') e.body.warn(false);
@@ -626,6 +634,19 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
     return [toP + Math.PI, 0.25];
   }
 
+  // Turns to follow you; fires a cannonball when you're in reach.
+  function tower(e, dt, p, dist, toP) {
+    const s = e.body.state;
+    e.timer -= dt;
+    if (e.timer <= 0 && dist < TOWER.reach && p.sinking < 0) {
+      e.timer = TOWER.every;
+      const tx = p.x + p.vx * TOWER.lead, tz = p.z + p.vz * TOWER.lead, d = Math.hypot(tx - s.x, tz - s.z) || 1;
+      const dx = (tx - s.x) / d, dz = (tz - s.z) / d;
+      api.shoot([{ x: s.x + dx * 1.5, z: s.z + dz * 1.5, dx, dz }], dist);
+    }
+    return [toP, 0];
+  }
+
   // p: the player's ship state.
   function update(dt, t, p, camera) {
     player = p;
@@ -652,9 +673,10 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
         if (s.sinking >= 0) continue;
       }
       // Steer around rocks a few lengths ahead (a charging shark doesn't look).
-      if (e.mode !== 'charge' && !world.clearAt(s.x + Math.cos(want) * 4, s.z + Math.sin(want) * 4, 1)) want += 1.3 * e.roam;
+      const still = e.kind === 'tower' || e.kind === 'fortTower';
+      if (!still && e.mode !== 'charge' && !world.clearAt(s.x + Math.cos(want) * 4, s.z + Math.sin(want) * 4, 1)) want += 1.3 * e.roam;
       e.body.update(dt, t, want, throttle);
-      world.collide(s, e.kind === 'turtle' ? 1.3 : 1);
+      if (!still) world.collide(s, e.kind === 'turtle' ? 1.3 : 1);
     }
     mines.update(dt, t, p);
     boss?.update(dt, t, boss.local);
@@ -677,14 +699,16 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
   function separate(p) {
     // Jellyfish are soft and eels swim underneath, so ships pass through them.
     const all = [p, ...list.filter((e) => e.body.state.sinking < 0 && e.kind !== 'jelly' && e.kind !== 'eel')];
+    const fixed = (a) => a !== p && (a.kind === 'tower' || a.kind === 'fortTower'); // towers don't get pushed
     const state = (a) => (a === p ? p : a.body.state);
     for (let i = 0; i < all.length; i++) {
       for (let j = i + 1; j < all.length; j++) {
         const a = state(all[i]), b = state(all[j]), dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
         if (d >= 2.4 || d === 0 || a.sinking >= 0) continue;
-        const push = (2.4 - d) / 2, nx = dx / d, nz = dz / d;
-        a.x -= nx * push; a.z -= nz * push;
-        b.x += nx * push; b.z += nz * push;
+        const nx = dx / d, nz = dz / d, fa = fixed(all[i]), fb = fixed(all[j]);
+        const push = fa || fb ? 2.4 - d : (2.4 - d) / 2;
+        if (!fa) { a.x -= nx * push; a.z -= nz * push; }
+        if (!fb) { b.x += nx * push; b.z += nz * push; }
         const e = all[j];
         if (a === p && gear.has('ram') && e.rammed <= 0 && p.vx * nx + p.vz * nz > 2.5) { // heading into it
           e.rammed = 0.8;
@@ -749,5 +773,7 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
   }
   const bossBeaten = () => !!boss?.beaten();
 
-  return { spawn, remove: drop, update, hitAt, clear, disarm: mines.clear, alive, summonBoss, bossBeaten, list };
+  // An enemy standing at (x, z) (a camp or fort's tower).
+  const placeAt = (kind, x, z) => place(kind, x, z, 0);
+  return { spawn, placeAt, remove: drop, update, hitAt, clear, disarm: mines.clear, alive, summonBoss, bossBeaten, list };
 }

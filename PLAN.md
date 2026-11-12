@@ -2,7 +2,7 @@
 
 Chosen 2026-11-11. Third game, after River Puzzle and Tidebound. Built from a copy of Tidebound.
 
-**Progress:** Milestones 1 to 3 played on the phone 2026-11-11. Milestones 4 to 6 (story), the lore bible's main story, and its 8 side stories (src/sidequests.js: 3 new settlements, guarded places, a hunt, a powder run, an escort, 7 reward gears and a gear hold) built the same day, played on the phone. Published 2026-11-11 at https://sheshadharihariharan.github.io/saltwind/ (repo github.com/sheshadharihariharan/saltwind). Still to do: balancing.
+**Progress:** Milestones 1 to 3 played on the phone 2026-11-11. Milestones 4 to 6 (story), the lore bible's main story, and its 8 side stories (src/sidequests.js: 3 new settlements, guarded places, a hunt, a powder run, an escort, 7 reward gears and a gear hold) built the same day, played on the phone. Published 2026-11-11 at https://sheshadharihariharan.github.io/saltwind/ (repo github.com/sheshadharihariharan/saltwind). 2026-11-12: built (not yet live) trade-wind currents (src/currents.js), places to find (pirate camps, sea forts, stranded sailors, bottles with treasure maps), a living sea (src/life.js) and busier seas (wanted pirates with bounties, pirate fleets). Still to do: balancing.
 
 ## Context
 Tidebound is finished and live: 3 voyages, 3 bosses, a shipyard and saving. The user loves it and wants the next game, **Saltwind**. Unlike Tidebound's short voyages, Saltwind is an **open world**: one large ocean you sail around freely, with a simple **story** running through it.

@@ -2,7 +2,8 @@
 // Every chunk is built from the same fixed seed, so islands and rocks are always in the same place.
 // Also answers what ships and cannonballs bump into, and raises the rocks that shut you in with a boss.
 import * as THREE from 'three';
-import { seeded, rock, coral, sandbar, island, town, berg, wreck } from './world.js';
+import { seeded, rock, coral, sandbar, island, town, berg, wreck, camp, fort, castaway, bottle } from './world.js';
+import { laneDistance, WIDTH } from './currents.js';
 import { BOUND, toMap, toWorld, regionAt, REGIONS, PORTS, PORT_CLEAR, LAIRS, LAIR_RING } from './map.js';
 import { QUEST_SPOTS } from './sidequests.js';
 
@@ -13,6 +14,9 @@ const SEED = 20261111;
 const EDGE_GAP = 3.4; // spacing of the rocks walling in the world's edge
 const TREASURE = 0.15; // how often a chunk has a treasure spot: a little island with a chest beside it
 const SPOT_CLEAR = 22; // open water kept around each side-story place
+// Places to find, by chance per chunk. camp: a pirate camp in calm seas, a sea fort in rough ones; also stranded sailors and bottles.
+const FIND = { camp: 0.09, castaway: 0.05, bottle: 0.07 };
+const CALM = ['home', 'reef']; // regions with pirate camps; the others have sea forts
 const RING_ROCKS = 12; // rocks in a lair's ring, with gaps to sail through
 const FENCE = { radius: 28, rocks: 48, rise: 1.5, depth: 4 }; // the rocks that rise to shut you in with a boss (rise: seconds)
 
@@ -22,24 +26,26 @@ const regionOf = (x, z) => {
 };
 const lookAt = (x, z) => regionOf(x, z).look;
 
-// Room for something at (x, z): inside the ocean and away from ports, boss lairs and side-story places.
+// Room for something at (x, z): inside the ocean and away from ports, boss lairs, side-story places and currents.
 function open(x, z) {
   const m = toMap(x, z);
   if (Math.abs(m.e) > BOUND - 12 || Math.abs(m.n) > BOUND - 12) return false;
   if (Object.values(LAIRS).some((l) => Math.hypot(m.e - l.at[0], m.n - l.at[1]) < LAIR_RING + 8)) return false;
   if (QUEST_SPOTS.some(([e, n]) => Math.hypot(m.e - e, m.n - n) < SPOT_CLEAR)) return false;
+  if (laneDistance(m.e, m.n) < WIDTH + 4) return false;
   return Object.values(PORTS).every((p) => Math.hypot(m.e - p.at[0], m.n - p.at[1]) > PORT_CLEAR);
 }
 
 // on.load(chunk) / on.unload(chunk): a chunk was built or removed. A chunk's treasure is
 // { id, x, z, coins, wreck (beside a shipwreck, not an island) } or null; the chest itself is looked after by whoever listens.
+// A chunk's find is { id, kind: 'camp' | 'fort' | 'castaway' | 'bottle', x, z, towers: [{ x, z }], arm / person / bottle meshes } or null.
 // on.locked(e, n): is this spot (map coordinates) behind the curse fog? Nothing roams there.
 export function createOcean(scene, on) {
   const chunks = new Map(); // 'i,j' -> chunk
   let fence = null; // the rocks around a boss fight: a chunk of its own, rising or sinking
 
   function build(i, j) {
-    const c = { i, j, group: new THREE.Group(), hits: [], rings: [], sandbars: [], movers: [], treasure: null };
+    const c = { i, j, group: new THREE.Group(), hits: [], rings: [], sandbars: [], movers: [], treasure: null, find: null };
     const rnd = seeded(SEED + i * 7919, j * 104729 + 13);
     const x0 = i * SIZE, z0 = j * SIZE;
     const inside = (x, z) => x >= x0 && x < x0 + SIZE && z >= z0 && z < z0 + SIZE;
@@ -110,6 +116,27 @@ export function createOcean(scene, on) {
         c.treasure = { id: `${i},${j}`, x: cx, z: cz, coins: regionOf(x, z).coins + Math.floor(rnd() * 2), wreck: wrecked };
       }
     }
+    // A place to find, now and then (not in a chunk that already has treasure).
+    const roll = rnd(), here = regionAt(toMap(x0 + SIZE / 2, z0 + SIZE / 2).e, toMap(x0 + SIZE / 2, z0 + SIZE / 2).n);
+    const calm = CALM.includes(here);
+    const kind = c.treasure ? null : roll < FIND.camp ? (calm ? 'camp' : 'fort') : roll < FIND.camp + FIND.castaway ? 'castaway'
+      : roll < FIND.camp + FIND.castaway + FIND.bottle ? 'bottle' : null;
+    for (let tries = 0; kind && tries < 20 && !c.find; tries++) {
+      const x = x0 + 12 + rnd() * (SIZE - 24), z = z0 + 12 + rnd() * (SIZE - 24);
+      if (!open(x, z) || spots.some((s) => Math.hypot(s.x - x, s.z - z) < 16)) continue;
+      spots.push({ x, z });
+      const look = lookAt(x, z), a = rnd() * 6.28, find = { id: `${i},${j}`, kind, x, z, towers: [] };
+      if (kind === 'camp') {
+        camp(c, x, z, rnd, look);
+        find.towers.push({ x: x + Math.cos(a) * 6, z: z + Math.sin(a) * 6 });
+      } else if (kind === 'fort') {
+        fort(c, x, z, rnd, look);
+        find.towers.push({ x: x + Math.cos(a) * 6.5, z: z + Math.sin(a) * 6.5 }, { x: x - Math.cos(a) * 6.5, z: z - Math.sin(a) * 6.5 });
+      } else if (kind === 'castaway') Object.assign(find, castaway(c, x, z, rnd, look));
+      else find.bottle = bottle(c, x, z);
+      c.find = find;
+    }
+
     for (let tries = 0; tries < 20 && c.sandbars.length < (mid.sandbars ?? 0); tries++) {
       const x = x0 + 6 + rnd() * (SIZE - 12), z = z0 + 6 + rnd() * (SIZE - 12), r = 2.5 + rnd() * 1.8;
       if (open(x, z) && spots.every((s) => Math.hypot(s.x - x, s.z - z) > r + 6)) sandbar(c, x, z, r);

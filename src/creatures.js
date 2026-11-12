@@ -1,5 +1,5 @@
-// Sea creatures (the mine turtle, the shark, jellyfish, pufferfish, storm eels and the anglerfish)
-// and the floating mines the turtle leaves behind.
+// Sea creatures (the mine turtle, the shark, jellyfish, pufferfish, storm eels and the anglerfish),
+// the floating mines the turtle leaves behind, and the cannon towers of pirate camps and sea forts.
 // Creatures steer like ships and offer the same calls (update, touches, hurt, reset, remove).
 import * as THREE from 'three';
 import { toon, flat } from './stage.js';
@@ -352,6 +352,29 @@ export function createAngler(scene) {
     remove() {
       b.remove();
       glow.material.dispose();
+    },
+  };
+}
+
+// A cannon tower guarding a pirate camp (wood, on stilts) or a sea fort (stone). It can't move,
+// but it turns its cannon to follow you.
+const POST = new THREE.CylinderGeometry(0.12, 0.12, 1, 6).translate(0, 0.5, 0);
+const TOWER_WOOD = toon(0x8a5a33), TOWER_STONE = toon(0x9a948b), CANNON_MAT = toon(0x2a2e33);
+const DRUM = new THREE.CylinderGeometry(1.1, 1.3, 1, 10).translate(0, 0.5, 0);
+const BARREL = new THREE.CylinderGeometry(0.22, 0.28, 1.3, 10).rotateZ(Math.PI / 2);
+export function createTower(scene, stone) {
+  const b = createBody(scene, { maxSpeed: 0, turn: 1.6, hp: stone ? 90 : 60 }, { back: -1.2, front: 1.2, r: 1.3, top: 4.5 });
+  const top = mesh(DRUM, stone ? TOWER_STONE : TOWER_WOOD, [0, stone ? 0 : 1.6, 0], [1, stone ? 3 : 1.2, 1]);
+  if (!stone) for (const [x, z] of [[0.8, 0.8], [-0.8, 0.8], [0.8, -0.8], [-0.8, -0.8]]) b.body.add(mesh(POST, TOWER_WOOD, [x, -0.2, z], [1, 1.9, 1]));
+  const cannon = mesh(BARREL, CANNON_MAT, [0.9, stone ? 3.3 : 3.1, 0]);
+  b.body.add(top, cannon);
+  return {
+    ...b,
+    update(dt, t, want) {
+      b.move(dt, want, 0);
+      const sink = Math.max(0, b.state.sinking);
+      b.body.position.y = -sink * sink * 0.8; // crumbles down into the sea
+      b.body.rotation.z = Math.min(0.5, sink * 0.3);
     },
   };
 }

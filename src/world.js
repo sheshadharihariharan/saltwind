@@ -1,5 +1,5 @@
 // Pieces of the sea, built in code: rocks, coral heads, sandbars, drifting icebergs, shipwrecks, islands with trees,
-// and port towns.
+// port towns, and places to find (pirate camps, sea forts, stranded sailors, bottles).
 // Each builder adds its meshes to a chunk ({ group, hits, rings, sandbars }, see chunks.js) and records
 // what ships bump into. Also the drifting foam dashes that make the water look like it is moving.
 import * as THREE from 'three';
@@ -125,6 +125,77 @@ export function wreck(c, x, z, rnd) {
   c.group.add(g);
   foamRing(c, x, z, 2.4, rnd);
   c.hits.push({ x, z, r: 2, top: 1.6, kind: 'rock' });
+}
+
+// A pirate camp: a small island with tents and a campfire. Its cannon tower (an enemy, enemies.js) stands beside it.
+export function camp(c, x, z, rnd, look) {
+  island(c, x, z, 3, rnd, { ...look, tree: null });
+  for (const [a, color] of [[0.4, 0xd8453a], [2.6, 0xe8dcc0]]) {
+    const tent = new THREE.Mesh(ROOF, mat(color));
+    tent.scale.set(1.6, 1.6, 1.6);
+    tent.position.set(x + Math.cos(a) * 1.3, 1.3, z + Math.sin(a) * 1.3);
+    tent.rotation.y = a;
+    c.group.add(tent);
+  }
+  const fire = new THREE.Mesh(BUD, lampMat);
+  fire.scale.set(1.4, 2, 1.4);
+  fire.position.set(x - 0.6, 0.95, z - 0.8);
+  fire.userData.outlineParameters = { visible: false };
+  c.group.add(fire);
+}
+
+// A sea fort: a grey rock with stone walls and a flag. Its two cannon towers stand either side.
+export function fort(c, x, z, rnd, look) {
+  rock(c, x, z, 3.2, rnd, { ...look, spires: false });
+  const wall = mat(0x8f8a82);
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * 6.28 + 0.4, w = new THREE.Mesh(BOX, wall);
+    w.scale.set(2.6, 1.2, 0.5);
+    w.position.set(x + Math.cos(a) * 1.6, 2.4, z + Math.sin(a) * 1.6);
+    w.rotation.y = -a + Math.PI / 2;
+    c.group.add(w);
+  }
+  const pole = new THREE.Mesh(TRUNK, trunkMat), flag = new THREE.Mesh(BOX, mat(0x22272b));
+  pole.position.set(x, 3.6, z);
+  flag.scale.set(0.9, 0.5, 0.05);
+  flag.position.set(x + 0.45, 4.4, z);
+  c.group.add(pole, flag);
+}
+
+// A stranded sailor on a tiny sandy islet, waving. Returns { person, arm } so they can wave and be rescued.
+export function castaway(c, x, z, rnd, look) {
+  island(c, x, z, 1.6, rnd, { ...look, tree: null });
+  const person = new THREE.Group();
+  const body = new THREE.Mesh(BOX, mat(0x3f6fb0)), head = new THREE.Mesh(BUD, mat(0xe0b08a));
+  body.scale.set(0.45, 0.8, 0.35);
+  body.position.y = 1.15;
+  head.scale.setScalar(1.3);
+  head.position.y = 1.8;
+  const arm = new THREE.Group(), stick = new THREE.Mesh(TRUNK, trunkMat), rag = new THREE.Mesh(BOX, mat(0xffffff));
+  stick.scale.set(0.4, 0.5, 0.4);
+  stick.position.y = 0.5;
+  rag.scale.set(0.5, 0.35, 0.05);
+  rag.position.set(0.25, 1, 0);
+  arm.add(stick, rag);
+  arm.position.set(0.25, 1.45, 0);
+  person.add(body, head, arm);
+  person.position.set(x, 0, z);
+  c.group.add(person);
+  return { person, arm };
+}
+
+// A bottle bobbing on the water with a rolled-up map inside. Returns it, so it can bob and be picked up.
+export function bottle(c, x, z) {
+  const g = new THREE.Group();
+  const glass = new THREE.Mesh(TRUNK, mat(0x5fae6a)), cork = new THREE.Mesh(BUD, plankMat);
+  glass.scale.set(1.6, 0.35, 1.6);
+  glass.rotation.z = Math.PI / 2 - 0.3;
+  cork.position.set(0.45, 0.15, 0);
+  g.add(glass, cork);
+  g.position.set(x, 0.15, z);
+  c.group.add(g);
+  foamRing(c, x, z, 0.7, Math.random);
+  return g;
 }
 
 // A sandbar: pale shallow water that slows ships down. Not solid.

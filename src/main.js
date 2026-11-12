@@ -14,7 +14,9 @@ import { createWeather } from './weather.js';
 import { createFog } from './fog.js';
 import { STEPS, PEOPLE, FLAMES, LOGS, COB, target } from './story.js';
 import { createBrazier } from './brazier.js';
-import { createSideStories, SIDE_PEOPLE } from './sidequests.js';
+import { createSideStories, SIDE_PEOPLE, QUEST_SPOTS } from './sidequests.js';
+import { createCurrents, LANES } from './currents.js';
+import { createSeaLife } from './life.js';
 import { GEAR, gearChoices } from './gear.js';
 import { showSeaChart, hideChart, showTalk, showPanel, hidePanel, gearTile, showGear, showTitle, hideTitle, icon } from './screens.js';
 import { save, store, UPGRADES, MAX_LEVEL, upgradeCost, upgradedStats, shotDamage } from './save.js';
@@ -38,6 +40,17 @@ const CAST = { ...PEOPLE, ...SIDE_PEOPLE }; // everyone who talks
 const QUOIN = 1.15; // the Gunner's Quoin: cannonballs hit this much harder
 const SHEATHING = { sting: 0.75, sand: 0.75 }; // with coral sheathing, stings and sandbars only slow you to this
 const DELIVER_HULL = 0.75; // Nix patches your hull to at least this before loading the powder
+const FINDS = { near: 32, campCoins: 8, fortCoins: 14, rescue: 5, bottle: 2.5 }; // places to find: how close, what they hold
+const MAP = { near: [120, 260], dig: 14, coins: [16, 22] }; // a bottle's treasure map: how far away the X is, how close to dig it up
+const RESCUE_REWARD = 80; // gold for bringing a stranded sailor home
+// Stranded sailors you can rescue, and what they say when you bring them to port.
+const SAILORS = [
+  { name: 'Gilly the deckhand', face: { skin: 0xf1c9a5, hair: 0x7a4a2a, hat: 'bandana', hatColor: 0x3f6fb0 }, line: 'Three days on that rock with one coconut and my own singing. Thank you, skipper!' },
+  { name: 'Old Tobias', face: { skin: 0xe0b08a, hair: 0xd9d9d9, hat: 'cap', hatColor: 0x5a3a2a, beard: true }, line: "Bless you! The fog took my boat, but it can't have my pension." },
+  { name: 'Ness the net-mender', face: { skin: 0xc68a5e, hair: 0x2b1d14, hat: 'straw', hatColor: 0xd9c49a, freckles: true }, line: "I'd have mended my way home with seaweed if you hadn't come along. Here, for your trouble." },
+  { name: 'Cabin-boy Rook', face: { skin: 0xf3d3bd, hair: 0xe8c36a, hat: 'none', hatColor: 0 }, line: 'Wait till I tell Ma I rode on a real fighting ship!' },
+  { name: 'Captain Ashby', face: { skin: 0xd9a066, hair: 0x4a4a4e, hat: 'tricorn', hatColor: 0x22272b, moustache: true }, line: 'A captain without a ship is just a man on a rock. Much obliged.' },
+];
 
 const stage = createStage(document.getElementById('game'));
 // Has the story lifted the curse fog over a region yet? locked: is a spot on the map behind the fog?
@@ -45,13 +58,19 @@ const isOpen = (id) => save.story >= REGIONS[id].opens;
 function locked(e, n) { return !isOpen(regionAt(e, n)); }
 // Treasure chests come and go with their part of the sea; opened ones stay opened.
 const treasures = new Map(); // chest id -> its treasure spot (chunks.js), for the shipwreck logs
+const finds = new Map(); // places to find near the ship (chunks.js) that aren't done yet
 const ocean = createOcean(stage.scene, {
-  load: ({ treasure: t }) => {
+  load: ({ treasure: t, find }) => {
+    if (find && !save.finds.includes(find.id)) finds.set(find.id, find);
+    if (find?.person && save.finds.includes(find.id)) find.person.visible = false; // already rescued
     if (!t || save.chests.includes(t.id)) return;
     treasures.set(t.id, t);
     loot.chest(t.x, t.z, t.coins, t.id);
   },
-  unload: ({ treasure: t }) => { if (t) loot.removeChest(t.id); },
+  unload: ({ treasure: t, find }) => {
+    if (t) loot.removeChest(t.id);
+    if (find) finds.delete(find.id);
+  },
   locked,
 });
 const foam = createFoam(stage.scene);
@@ -70,6 +89,7 @@ const enemies = createEnemies(stage.scene, ocean, fx, loot, {
   slowPlayer: (seconds) => { p.slow = seconds; },
   touchesPlayer: (x, y, z) => ship.touches(x, y, z),
   ink: splatInk,
+  bounty: (name, amount) => banner(`${name} sunk!`, `Bounty: +${amount} gold`),
   sunk(kind, x, z) { // the story's "sink some enemies" steps, and side-story hunts
     sides.sunk(kind, x, z);
     const { sink: n, kind: only } = STEPS[save.story];
@@ -79,7 +99,9 @@ const enemies = createEnemies(stage.scene, ocean, fx, loot, {
     showGoal();
   },
 }, gear);
-const roam = createRoamers(enemies);
+const roam = createRoamers(enemies, banner, () => save.story);
+const currents = createCurrents(stage.scene);
+const life = createSeaLife(stage.scene, fx, loot);
 const fog = createFog(stage.scene, locked);
 const brazier = (() => { // on the beach beside Home Harbour's dock, the other side from the lighthouse
   const town = toWorld(...PORTS.home.at), d = toWorld(0, 1);
@@ -259,7 +281,12 @@ const showGoal = () => { compassText = null; }; // the goal line is redrawn with
 // Everything the compass can point at: the story's goal, then each side story's. [{ name, e, n, text, side }]
 function aims() {
   const place = goalPlace();
-  return [...(place ? [{ ...place, text: mainGoal() }] : []), ...sides.targets().map((t) => ({ ...t, side: true }))];
+  const extra = [
+    ...(save.map ? [{ name: 'Treasure map', e: save.map.e, n: save.map.n, text: 'Sail to the X to dig up the treasure', side: true, mark: 'X' }] : []),
+    ...(save.passenger ? [{ name: PORTS[save.passenger.port].name, e: PORTS[save.passenger.port].at[0], n: PORTS[save.passenger.port].at[1],
+      text: `Take ${save.passenger.name} home to ${PORTS[save.passenger.port].name}`, side: true }] : []),
+  ];
+  return [...(place ? [{ ...place, text: mainGoal() }] : []), ...sides.targets().map((t) => ({ ...t, side: true })), ...extra];
 }
 
 // Going into a port where the story has someone to talk to: the chat first, then the port.
@@ -385,6 +412,21 @@ function showHelp(then) {
 // In port: the harbour's guns see off anything that followed you in.
 function openPort(id) {
   if (talkThenPort(id)) return;
+  if (save.passenger?.port === id) { // a rescued sailor is home
+    const { name, line } = save.passenger, who = SAILORS.find((s) => s.name === name);
+    save.passenger = null;
+    mode = 'talk';
+    $('visit').classList.remove('on');
+    hidePanel();
+    showTalk({}, { name, face: who.face }, [line], () => {
+      setGold(gold + RESCUE_REWARD);
+      banner(`${name} is home!`, `+${RESCUE_REWARD} gold`);
+      sfx.coin();
+      keep();
+      openPort(id);
+    });
+    return;
+  }
   const side = sides.talkAt(id);
   if (side) { // a side story to start, or one to hand in
     mode = 'talk';
@@ -520,6 +562,89 @@ function sunk() {
   });
 }
 
+// Places to find near the ship: pirate camps and sea forts (knock down their towers for a chest),
+// stranded sailors (sail up to rescue them), and bottles (a treasure map to an X on the chart).
+let fullNote = 0;
+function updateFinds(t) {
+  for (const f of finds.values()) {
+    const d = Math.hypot(p.x - f.x, p.z - f.z);
+    if (f.kind === 'camp' || f.kind === 'fort') {
+      if (!f.live) {
+        if (d > FINDS.near || p.sinking >= 0) continue;
+        f.live = f.towers.map((w) => enemies.placeAt(f.kind === 'fort' ? 'fortTower' : 'tower', w.x, w.z));
+        banner(f.kind === 'fort' ? 'A sea fort!' : 'A pirate camp!', f.kind === 'fort' ? 'Knock down both cannon towers' : 'Knock down its cannon tower');
+      } else if (f.live.every((e) => e.sunk)) {
+        save.finds.push(f.id);
+        finds.delete(f.id);
+        loot.chest(f.towers[0].x, f.towers[0].z, f.kind === 'fort' ? FINDS.fortCoins : FINDS.campCoins, `find:${f.id}`);
+        banner(f.kind === 'fort' ? 'Fort taken!' : 'Camp cleared!', 'Grab the chest');
+        keep();
+      } else if (f.live.some((e) => !e.sunk && !enemies.list.includes(e))) f.live = null; // you sailed off: they're back next time
+    } else if (f.kind === 'castaway') {
+      f.arm.rotation.z = Math.sin(t * 6) * 0.6; // waving for help
+      if (d > FINDS.rescue || p.sinking >= 0) continue;
+      if (save.passenger) {
+        if (t > fullNote) { fullNote = t + 6; banner('Your ship has a passenger already', 'Drop them off first'); }
+        continue;
+      }
+      const sailor = SAILORS[Math.floor(Math.random() * SAILORS.length)], m = toMap(f.x, f.z);
+      const port = Object.keys(PORTS).filter((id) => isOpen(PORTS[id].region))
+        .sort((a, b) => Math.hypot(PORTS[a].at[0] - m.e, PORTS[a].at[1] - m.n) - Math.hypot(PORTS[b].at[0] - m.e, PORTS[b].at[1] - m.n))[0];
+      save.passenger = { name: sailor.name, line: sailor.line, port };
+      save.finds.push(f.id);
+      finds.delete(f.id);
+      f.person.visible = false;
+      banner(`You rescued ${sailor.name}!`, `Take them home to ${PORTS[port].name}`);
+      sfx.chest();
+      keep();
+    } else if (f.kind === 'bottle' && !f.taken) {
+      f.bottle.position.y = 0.15 + Math.sin(t * 2.4) * 0.1;
+      f.bottle.rotation.y = t * 0.6;
+      if (d > FINDS.bottle) continue;
+      if (save.map) {
+        if (t > fullNote) { fullNote = t + 6; banner('A bottle bobs by', 'Follow the map you have first'); }
+        continue;
+      }
+      const x = markMap();
+      if (!x) continue;
+      f.taken = true;
+      f.bottle.visible = false;
+      save.map = x;
+      banner('A message in a bottle!', 'A treasure map: follow the X on your chart');
+      sfx.chest();
+      keep();
+    }
+  }
+  // Following a map: close to the X, a chest bobs up out of the sea.
+  if (save.map && p.sinking < 0) {
+    const w = toWorld(save.map.e, save.map.n);
+    if (Math.hypot(p.x - w.x, p.z - w.z) < MAP.dig) {
+      let spot = w; // open water at the X, or the nearest open water on your side of it
+      for (let k = 0; k <= 10 && !ocean.clearAt(spot.x, spot.z, 1.5); k++) spot = { x: w.x + (p.x - w.x) * k / 10, z: w.z + (p.z - w.z) * k / 10 };
+      const coins = MAP.coins[0] + Math.floor(Math.random() * (MAP.coins[1] - MAP.coins[0] + 1));
+      loot.chest(spot.x, spot.z, coins, `map:${Math.round(save.map.e)},${Math.round(save.map.n)}`);
+      save.map = null;
+      banner('Buried treasure!', 'A chest bobs up from the deep');
+      fx.splash(spot.x, spot.z, 2);
+      keep();
+    }
+  }
+}
+
+// Somewhere for a treasure map's X: open sea the fog has lifted from, a fair sail away, clear of ports and lairs.
+function markMap() {
+  const here = toMap(p.x, p.z);
+  for (let tries = 0; tries < 40; tries++) {
+    const a = Math.random() * 6.28, d = MAP.near[0] + Math.random() * (MAP.near[1] - MAP.near[0]);
+    const e = here.e + Math.cos(a) * d, n = here.n + Math.sin(a) * d;
+    if (Math.abs(e) > BOUND - 80 || Math.abs(n) > BOUND - 80 || locked(e, n)) continue;
+    if ([...Object.values(PORTS), ...Object.values(LAIRS)].some((pl) => Math.hypot(pl.at[0] - e, pl.at[1] - n) < 60)) continue;
+    if (QUEST_SPOTS.some(([qe, qn]) => Math.hypot(qe - e, qn - n) < 40)) continue;
+    return { e, n };
+  }
+  return null;
+}
+
 // A chest beside a shipwreck holds the wreck's log: one for each region, read once.
 function readLog(id) {
   const t = treasures.get(id), m = t && toMap(t.x, t.z), where = m && regionAt(m.e, m.n);
@@ -538,7 +663,7 @@ function openChart() {
   sfx.click();
   const m = toMap(p.x, p.z), dir = toMap(Math.cos(p.heading), Math.sin(p.heading));
   showSeaChart({ seen: seen.join(''), N: SEEN, ports: save.ports, ship: { ...m, heading: Math.atan2(dir.e, dir.n) }, isOpen,
-    goals: aims().map((a) => ({ text: a.text, at: [a.e, a.n], side: !!a.side })), relics: relics() }, () => {
+    goals: aims().map((a) => ({ text: a.text, at: [a.e, a.n], side: !!a.side, mark: a.mark })), relics: relics(), lanes: LANES }, () => {
     sfx.click();
     hideChart();
     mode = 'sea';
@@ -656,7 +781,12 @@ function frame(dt) {
     p.slow = Math.max(0, (p.slow ?? 0) - dt);
     const soft = gear.has('sheathing');
     const drag = (p.slow > 0 ? (soft ? SHEATHING.sting : 0.5) : 1) * (ocean.sandAt(p.x, p.z) ? (soft ? SHEATHING.sand : 0.45) : 1);
-    ship.update(dt, time, want, Math.min(1, mag * 1.3) * drag);
+    const boost = mag > 0.12 ? currents.boost(p.x, p.z, p.heading) : 1; // a trade-wind current speeds you along
+    if (boost > 1 && !save.seenCurrent) {
+      save.seenCurrent = true;
+      banner('A trade-wind current!', 'Sail along it to go twice as fast');
+    }
+    ship.update(dt, time, want, Math.min(1, mag * 1.3) * drag * boost);
   }
   const hit = ocean.collide(p);
   if (hit > 1) { // bump: splash, knock and a little camera shake
@@ -679,6 +809,7 @@ function frame(dt) {
   }
   fogNote = Math.max(0, fogNote - dt);
   fog.update(p.x, p.z, time);
+  currents.update(p.x, p.z, time);
   brazier.update(time, flamesLit());
   updateBarks(dt);
 
@@ -706,6 +837,8 @@ function frame(dt) {
     enemies.update(dt, time, p, stage.camera);
     if (!fight && !sides.busy()) roam(dt, p, region);
     sides.update(dt, time);
+    updateFinds(time);
+    life.update(dt, time, p, region, ocean.clearAt);
     if (region === 'maelstrom' && !fight && p.sinking < 0) { // the swirl carries you round its eye
       const eye = toWorld(...LAIRS.kraken.at), dx = eye.x - p.x, dz = eye.z - p.z, d = Math.hypot(dx, dz) || 1;
       p.vx += ((-dz / d) + (dx / d) * 0.3) * CURRENT * dt;
@@ -781,7 +914,7 @@ stage.renderer.setAnimationLoop((now) => {
 
 // Lets the browser console inspect the game while developing. teleport(e, n): jump to a spot on the map.
 if (import.meta.env.DEV) {
-  window.game = { stage, ship, ocean, enemies, loot, fx, gear, save, frame, setSail, openChart, openPort, setGold, advance, sides,
+  window.game = { stage, ship, ocean, enemies, loot, fx, gear, save, frame, setSail, openChart, openPort, setGold, advance, sides, finds,
     get fight() { return fight; },
     teleport: (e, n) => { const w = toWorld(e, n); placeShip(w.x, w.z, p.heading); },
     get mode() { return mode; }, get region() { return region; }, get gold() { return gold; } };

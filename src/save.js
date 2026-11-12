@@ -8,7 +8,9 @@ const KEY = 'saltwind-save';
 // hp: the hull (null = full). gear: gear ids fitted (up to 3). chests: ids of treasure chests opened.
 // story: the story step you're on (story.js). sunk: enemies sunk so far for a "sink" step. bosses: lair ids beaten.
 // logs: regions whose shipwreck log you've read. quests: side stories started (sidequests.js). hold: spare gear.
-const FRESH = { pos: null, seen: '', ports: ['home'], lastPort: 'home', gold: 0, hp: null, gear: [], chests: [], story: 0, sunk: 0, bosses: [], logs: [], quests: {}, hold: [],
+// finds: places found and done (camps, forts, rescued sailors). map: { e, n } of a treasure map's X, or null.
+// passenger: a rescued sailor on board { name, line, port }, or null. seenCurrent: told about trade-wind currents.
+const FRESH = { pos: null, seen: '', ports: ['home'], lastPort: 'home', gold: 0, hp: null, gear: [], chests: [], story: 0, sunk: 0, bosses: [], logs: [], quests: {}, hold: [], finds: [], map: null, passenger: null, seenCurrent: false,
   levels: { hull: 0, sails: 0, cannons: 0 }, seenHelp: false };
 
 export const save = (() => {

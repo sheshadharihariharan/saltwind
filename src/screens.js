@@ -18,9 +18,10 @@ export const icon = (name) => `<svg viewBox="0 0 24 24">${ICONS[name]}</svg>`;
 // the rest is blank parchment.
 // seen: one character per square, N x N, row by row from the south-west ('1' = seen).
 // ports: ids of ports found. ship: { e, n, heading } on the map (heading: radians clockwise from north).
-// isOpen(regionId): has the fog lifted there? goals: [{ text, at: [e, n], side }] (the story's, then side stories').
+// isOpen(regionId): has the fog lifted there? goals: [{ text, at: [e, n], side, mark }] (the story's, then side stories').
+// lanes: the trade-wind currents (currents.js LANES), drawn as dotted lines.
 // relics: how many found.
-export function showSeaChart({ seen, N, ports, ship, isOpen, goals, relics }, onClose) {
+export function showSeaChart({ seen, N, ports, ship, isOpen, goals, relics, lanes }, onClose) {
   const px = 6, size = N * px, cell = (2 * BOUND) / N, sub = 3;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
@@ -54,9 +55,10 @@ export function showSeaChart({ seen, N, ports, ship, isOpen, goals, relics }, on
     svg += `<g class="node done" transform="translate(${x} ${y}) scale(3.6)"><circle r="26"/>
       <g transform="translate(-15 -15) scale(1.25)">${ICONS.port}</g><text class="name" x="34" y="7">${PORTS[id].name}</text></g>`;
   }
+  for (const l of lanes) svg += `<line class="lane" x1="${at(...l.a)[0]}" y1="${at(...l.a)[1]}" x2="${at(...l.b)[0]}" y2="${at(...l.b)[1]}"/>`;
   for (const g of goals) {
     const [x, y] = at(...g.at);
-    svg += `<g class="goal${g.side ? ' side' : ''}" transform="translate(${x} ${y})"><circle r="60"/><text y="26">${g.side ? '?' : '!'}</text></g>`;
+    svg += `<g class="goal${g.side ? ' side' : ''}" transform="translate(${x} ${y})"><circle r="60"/><text y="26">${g.mark ?? (g.side ? '?' : '!')}</text></g>`;
   }
   const [sx, sy] = at(ship.e, ship.n);
   svg += `<path class="you" transform="translate(${sx} ${sy}) rotate(${(ship.heading * 180) / Math.PI})" d="M0 -70L44 50L0 26L-44 50Z"/>`;

@@ -276,3 +276,4 @@ body.home #compass { display: none; }
 #compass.side i { background: #fff7e6; }
 #chart .goal.side circle { fill: #9fd8f0; }
 #chart p.goal.side { color: #2f7fa8; font-size: 16px; }
+#chart .lane { stroke: #ffffff; stroke-width: 14px; stroke-dasharray: 10 34; stroke-linecap: round; opacity: .75; }
