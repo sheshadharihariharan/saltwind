@@ -34,6 +34,7 @@ export const LIVERIES = {
   frost: { name: 'Frost Wyrm', look: L(0x3f8fa3, 0xd8f1f4, 0xdff6ff, 0x9fe0e8, 0x9fe0e8), legend: 'serpent' },
   phantom: { name: 'Phantom', look: L(0x5e8f86, 0xcfeee4, 0xbfe9dc, 0x2b3a52, 0xb8ffe9), legend: 'galleon' },
   ink: { name: "Kraken's Ink", look: L(0x3a2a4a, 0x6b4a6b, 0x8e55b0, 0x1a1030, 0xb06ad8), legend: 'kraken' },
+  blacktide: { name: 'Black Tide', look: L(0x26282c, 0x6b6458, 0x3a3d42, 0xd9dde0, 0xd9dde0), legend: 'greyhaven' },
 };
 
 // A little picture of a livery: its sail with the stripe, on its hull.

@@ -2,6 +2,9 @@
 // The side facing you glows red before a full broadside (a red band on the water shows where it reaches),
 // and a mortar on its stern lobs shells. Knock out all eight cannons, then sink the hull itself.
 // When its cannons are gone the Admiral calls two pirate sloops and the mortar fires faster.
+//
+// The Black Tide (Silas Mourne's flagship, Part Two's last boss) is the same fight in grey (BLACK_TIDE):
+// it calls Brotherhood sloops, drops mines behind it once its cannons are gone, and lays smoke as it sinks.
 import * as THREE from 'three';
 import { toon, flat } from './stage.js';
 import { sfx } from './audio.js';
@@ -29,7 +32,11 @@ const GUN = new THREE.CylinderGeometry(0.2, 0.26, 1, 10).rotateX(Math.PI / 2);
 const MORTAR = new THREE.CylinderGeometry(0.45, 0.55, 1, 12);
 const BAND = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
 const m = (c) => toon(c);
-const hullMat = m(0x2b3a52), trim = m(0xffc93c), deckMat = m(0xb08850), sailMat = m(0xf1e6cc), stripeMat = m(0x2b3a52), dark = m(0x23262b), wood = m(0x6b4a2b);
+const dark = m(0x23262b), wood = m(0x6b4a2b);
+const ADMIRAL = { name: "The Admiral's Flagship", colors: { hull: 0x2b3a52, trim: 0xffc93c, deck: 0xb08850, sail: 0xf1e6cc, stripe: 0x2b3a52 }, helper: 'sloop', hullHp: 120 };
+// mines: seconds between mines dropped once the cannons are gone. smoke: health left (0..1) at which smoke covers the screen.
+export const BLACK_TIDE = { name: 'The Black Tide', colors: { hull: 0x26282c, trim: 0xd9dde0, deck: 0x6b6458, sail: 0x6d737a, stripe: 0x26282c },
+  helper: 'brother', hullHp: 160, mines: 3, smoke: [0.6, 0.3] };
 
 const GUN_HP = 12, HULL_HP = 120;
 const GUNS = [-3, -1, 1, 3]; // along each side
@@ -38,8 +45,11 @@ const MORTAR_FIRE = { every: [4, 2.4], flight: 1.6, damage: 12 }; // before / af
 const SAIL = { radius: 8, speed: [2.2, 3.2] };
 
 // scene: the group it is built in; the middle of its lair is that group's (0, 0).
-// api: shoot(shots, dist), hurtPlayer, shake, spawn(kind). loot: for the gold it drops.
-export function createFlagship(scene, fx, loot, api) {
+// api: shoot(shots, dist), hurtPlayer, shake, spawn(kind), mine(x, z), ink(). loot: for the gold it drops.
+// look: ADMIRAL (the Storm Belt boss) or BLACK_TIDE.
+export function createFlagship(scene, fx, loot, api, look = ADMIRAL) {
+  const c = look.colors, hullMat = m(c.hull), trim = m(c.trim), deckMat = m(c.deck), sailMat = m(c.sail), stripeMat = m(c.stripe);
+  const HULL_HP = look.hullHp, smoke = [...(look.smoke ?? [])];
   const root = new THREE.Group(), body = new THREE.Group();
   root.add(body);
   scene.add(root);
@@ -72,9 +82,9 @@ export function createFlagship(scene, fx, loot, api) {
   scene.add(band);
 
   const s = { angle: Math.random() * 6.28, x: 0, z: 0, heading: 0 };
-  let phase = 'guns', phaseTime = 0, hullHp = HULL_HP, broadside = 2.5, warnSide = 0, mortarTimer = 3;
+  let phase = 'guns', phaseTime = 0, hullHp = HULL_HP, broadside = 2.5, warnSide = 0, mortarTimer = 3, mineTimer = 2;
   const bar = document.getElementById('boss');
-  bar.querySelector('b').textContent = "The Admiral's Flagship";
+  bar.querySelector('b').textContent = look.name;
   bar.classList.add('on');
   const v = new THREE.Vector3();
 
@@ -140,6 +150,14 @@ export function createFlagship(scene, fx, loot, api) {
         lob(p);
         if (angry) setTimeout(() => lob(p), 350);
       }
+      if (angry && look.mines) { // mines over the stern
+        mineTimer -= dt;
+        if (mineTimer <= 0) {
+          mineTimer = look.mines;
+          api.mine(s.x - Math.cos(s.heading) * (L + 1), s.z - Math.sin(s.heading) * (L + 1));
+        }
+      }
+      if (angry && smoke.length && hullHp / HULL_HP <= smoke[0]) { smoke.shift(); api.ink(); sfx.roar(); }
     }
     // The red band follows the ship while it warns.
     band.visible = warnSide !== 0;
@@ -157,8 +175,8 @@ export function createFlagship(scene, fx, loot, api) {
       phaseTime = 0;
       sfx.roar();
       api.shake(0.5);
-      api.spawn('sloop');
-      api.spawn('sloop');
+      api.spawn(look.helper);
+      api.spawn(look.helper);
     }
     if (phase === 'beaten') {
       body.rotation.z = Math.min(0.5, phaseTime * 0.2);
@@ -228,6 +246,7 @@ export function createFlagship(scene, fx, loot, api) {
   function remove() {
     scene.remove(root, band);
     band.material.dispose();
+    [hullMat, trim, deckMat, sailMat, stripeMat].forEach((mat) => mat.dispose());
     bar.classList.remove('on');
   }
 

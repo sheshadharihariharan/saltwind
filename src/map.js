@@ -109,6 +109,11 @@ export const LAIRS = {
   kraken: { name: 'Eye of the Maelstrom', at: [-280, 120], boss: 'kraken', relic: 'the Heart of the Sea',
     title: ['The Kraken', 'Devourer of the Tide'], hint: 'Shoot its tentacles, then its head', beaten: 'Kraken defeated!',
     lines: [[0.6, 'The Kraken roars and whips the water into a frenzy!'], [0.25, 'The Cursed Heart flares crimson in its maw!']] },
+  // Part Two's last boss, in a hidden cove in the far north-east.
+  greyhaven: { name: 'Grey Haven', at: [800, 550], boss: 'blacktide', relic: "Mourne's grey flag",
+    title: ['The Black Tide', 'Flagship of Silas Mourne, the Fog-King'], hint: 'Knock out its cannons, then sink the hull', beaten: 'The Black Tide sunk!',
+    lines: [[1, 'Mourne: "You took my fog, my captains and my trade. Now I take your ship."'],
+      [0.6, 'Mourne: "Smoke! Lay smoke, you dogs! And mines astern!"'], [0.3, 'Mourne: "The grey will come back! It always comes back!"']] },
 };
 export const LAIR_RING = 30; // radius of a lair's ring of rocks
 export const LAIR_ENTER = 22; // the fight starts when you're this close to the middle

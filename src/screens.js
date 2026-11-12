@@ -79,7 +79,7 @@ const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 const SCROLL = `<svg viewBox="0 0 100 100" stroke="#143b45" stroke-width="4" stroke-linejoin="round">
   <rect x="22" y="22" width="56" height="58" rx="4" fill="#f3e2bf"/><rect x="16" y="14" width="68" height="12" rx="6" fill="#d9c49a"/>
   <rect x="16" y="76" width="68" height="12" rx="6" fill="#d9c49a"/><path d="M32 40h36M32 50h36M32 60h24" fill="none"/></svg>`;
-function portrait(f) {
+export function portrait(f) {
   if (!f) return SCROLL;
   const ink = '#143b45', hat = hex(f.hatColor), hair = hex(f.hair), eye = f.eyes ? hex(f.eyes) : ink;
   const hats = {
@@ -151,11 +151,33 @@ export function showTalk(people, who, lines, done) {
 
 // title, text (may hold <b>), buttons: [{ label, onClick, quiet }],
 // tiles: [{ icon, name, text, price, level (shows dots out of 5), disabled, onClick }].
-export function showPanel({ title, text = '', tiles = [], buttons = [], tone = '' }) {
+// rows: a list instead, one line each (the Market, the Bounty Board):
+//   [{ icon (an svg) or face (a portrait), name, text, tag (words on the right), done (greyed), buttons: [{ label, disabled, onClick }] }].
+export function showPanel({ title, text = '', tiles = [], rows = [], buttons = [], tone = '' }) {
   const panel = $('panel');
   panel.className = tone + (panel.classList.contains('on') ? ' on' : ''); // redraw in place, no flicker
   panel.querySelector('.card').innerHTML = `<h1>${title}</h1><p>${text}</p>
-    ${tiles.length ? '<div class="tiles"></div>' : ''}<div class="buttons"></div>`;
+    ${tiles.length ? '<div class="tiles"></div>' : ''}${rows.length ? '<div class="rows"></div>' : ''}<div class="buttons"></div>`;
+  for (const r of rows) {
+    const row = document.createElement('div');
+    row.className = 'row' + (r.done ? ' done' : '');
+    row.innerHTML = `${r.icon ? `<i class="pic">${r.icon}</i>` : `<i class="face">${r.face}</i>`}<div><b>${r.name}</b><span>${r.text}</span></div>`
+      + (r.tag ? `<em>${r.tag}</em>` : '');
+    if (r.buttons?.length) {
+      const acts = document.createElement('div');
+      acts.className = 'acts';
+      for (const btn of r.buttons) {
+        const b = document.createElement('button');
+        b.className = 'go small';
+        b.textContent = btn.label;
+        b.disabled = !!btn.disabled;
+        b.onclick = btn.onClick;
+        acts.append(b);
+      }
+      row.append(acts);
+    }
+    panel.querySelector('.rows').append(row);
+  }
   for (const t of tiles) {
     const b = document.createElement('button');
     b.className = 'tile';

@@ -9,19 +9,22 @@ import { createOcean } from './chunks.js';
 import { createEffects } from './effects.js';
 import { createEnemies } from './enemies.js';
 import { createLoot } from './loot.js';
-import { createRoamers } from './roam.js';
+import { createRoamers, RAID } from './roam.js';
 import { createWeather } from './weather.js';
 import { createFog } from './fog.js';
-import { STEPS, PEOPLE, FLAMES, LOGS, COB, target } from './story.js';
+import { STEPS, PEOPLE, FLAMES, LOGS, COB, END, target } from './story.js';
+import * as trade from './trade.js';
+import { GOODS, MARKETS, HOLD, CRATE_ICON } from './trade.js';
+import { createBounties, CAPTAINS } from './bounties.js';
 import { createBrazier } from './brazier.js';
 import { createSideStories, SIDE_PEOPLE, QUEST_SPOTS } from './sidequests.js';
 import { createCurrents, LANES } from './currents.js';
 import { createSeaLife } from './life.js';
 import { createHarbour, WORKS, LIVERIES, MARKET_DISCOUNT, liveryIcon } from './harbour.js';
 import { GEAR, gearChoices } from './gear.js';
-import { showSeaChart, hideChart, showTalk, showPanel, hidePanel, gearTile, showGear, showTitle, hideTitle, icon } from './screens.js';
+import { showSeaChart, hideChart, showTalk, showPanel, hidePanel, gearTile, showGear, showTitle, hideTitle, icon, portrait } from './screens.js';
 import { save, store, UPGRADES, MAX_LEVEL, upgradeCost, upgradedStats, shotDamage } from './save.js';
-import { REGIONS, PORTS, LAIRS, LAIR_ENTER, BOUND, toMap, toWorld, regionAt, dockSpot } from './map.js';
+import { REGIONS, PORTS, LAIRS, LAIR_ENTER, LAIR_RING, BOUND, toMap, toWorld, regionAt, dockSpot } from './map.js';
 import { startDevLog } from './devlog.js';
 import { unlockAudio, audioSetting, toggleAudio, sfx, seaSpeed, setMusic } from './audio.js';
 
@@ -46,7 +49,6 @@ const MAP = { near: [120, 260], dig: 14, coins: [16, 22] }; // a bottle's treasu
 const RESCUE_REWARD = 80; // gold for bringing a stranded sailor home
 const THREAT = { upgrades: 0.7, finished: 0.3, damage: 0.6 }; // how hard the seas get: from shipyard levels, and after the story
 const LEGEND_HIT = 1.5; // a legendary boss hits this much harder
-const END = 17; // the story step once the curse is lifted
 // Stranded sailors you can rescue, and what they say when you bring them to port.
 const SAILORS = [
   { name: 'Gilly the deckhand', face: { skin: 0xf1c9a5, hair: 0x7a4a2a, hat: 'bandana', hatColor: 0x3f6fb0 }, line: 'Three days on that rock with one coconut and my own singing. Thank you, skipper!' },
@@ -94,6 +96,7 @@ const enemies = createEnemies(stage.scene, ocean, fx, loot, {
   touchesPlayer: (x, y, z) => ship.touches(x, y, z),
   ink: splatInk,
   bounty: (name, amount) => banner(`${name} sunk!`, `Bounty: +${amount} gold`),
+  say: banner,
   sunk(kind, x, z) { // the story's "sink some enemies" steps, and side-story hunts
     sides.sunk(kind, x, z);
     const { sink: n, kind: only } = STEPS[save.story];
@@ -103,7 +106,7 @@ const enemies = createEnemies(stage.scene, ocean, fx, loot, {
     showGoal();
   },
 }, gear);
-const roam = createRoamers(enemies, banner, () => save.story);
+const roam = createRoamers(enemies, banner, () => save.story, () => trade.carried(save.cargo), () => !!STEPS[save.story].raid);
 const currents = createCurrents(stage.scene);
 const life = createSeaLife(stage.scene, fx, loot);
 const harbour = createHarbour(stage.scene, ocean);
@@ -126,6 +129,20 @@ const sides = createSideStories(stage.scene, save, {
   start: (id) => { if (id === 'powder') p.hp = Math.max(p.hp, p.maxHp * DELIVER_HULL); }, // Nix patches your planking first
 });
 const weather = createWeather(stage.scene, fx, { hurtPlayer });
+// Bounty captains: the one the story is after, and the bounty when they're sunk.
+const bounties = createBounties(stage.scene, {
+  enemies, sfx, banner, player: p,
+  wanted: () => STEPS[save.story].bounty ?? null,
+  reward(id) {
+    const c = CAPTAINS[id];
+    save.bounties.push(id);
+    setGold(gold + c.reward);
+    flash('gold', 'pop');
+    setTimeout(() => banner(`${c.name} sunk!`, `Bounty: +${c.reward} gold`), 600);
+    sfx.victory();
+    advance();
+  },
+});
 
 const $ = (id) => document.getElementById(id);
 const fireButtons = { left: $('fireL'), right: $('fireR') };
@@ -253,6 +270,7 @@ function setSail() {
   if (at && !locked(at.e, at.n)) placeShip(save.pos.x, save.pos.z, save.pos.heading, save.hp ?? Infinity);
   else placeAtPort('home', save.hp ?? Infinity); // first time out (or the save was somewhere the fog now covers)
   setGold(save.gold);
+  showCargo();
   showGoal();
   region = null; // announce the region on the first frame
   mode = 'sea';
@@ -282,6 +300,16 @@ function advance() {
 
 // Where the story wants you: { name, e, n } or null.
 function goalPlace() {
+  const step = STEPS[save.story];
+  if (step.trade) { // a trade run: first to where the good is made, until you've enough aboard
+    const { good, count, at } = step.trade, port = (save.cargo[good]?.n ?? 0) + save.sunk >= count ? at : GOODS[good].port;
+    return { name: PORTS[port].name, e: PORTS[port].at[0], n: PORTS[port].at[1] };
+  }
+  if (step.raid) return { name: PORTS.home.name, e: PORTS.home.at[0], n: PORTS.home.at[1] };
+  if (step.bounty) {
+    const c = CAPTAINS[step.bounty];
+    return { name: c.hideout, e: c.at[0], n: c.at[1], mark: '☠' };
+  }
   const t = target(save.story);
   if (!t) return null;
   const place = t.kind === 'port' ? PORTS[t.id] : LAIRS[t.id];
@@ -291,6 +319,11 @@ function goalPlace() {
 // The story's goal, with a count for "sink" steps.
 function mainGoal() {
   const step = STEPS[save.story];
+  if (step.trade) {
+    const { good, count } = step.trade, have = save.cargo[good]?.n ?? 0;
+    if (have + save.sunk < count) return `Buy ${count - save.sunk - have} more ${GOODS[good].name.toLowerCase()} at ${PORTS[GOODS[good].port].name}`;
+    return `${step.goal} (${save.sunk} / ${count})`;
+  }
   return step.sink ? `${step.goal} (${save.sunk} / ${step.sink})` : step.goal;
 }
 const showGoal = () => { compassText = null; }; // the goal line is redrawn with the compass
@@ -315,7 +348,7 @@ function talkThenPort(id) {
   hidePanel();
   showTalk(CAST, step.who, step.lines, () => {
     advance();
-    if (step.end) celebrate();
+    if (step.end) celebrate(step.end);
     else openPort(id);
   });
   return true;
@@ -335,28 +368,30 @@ function rewardSide(amount, id, name) {
   keep();
 }
 
-// The end of the story: fireworks over the harbour, and the sea is yours.
-function celebrate() {
+// The end of a part of the story: fireworks over the harbour, and the sea is yours.
+function celebrate({ title, text }) {
   mode = 'panel';
   fireworks = FIREWORKS;
   sfx.victory();
   showPanel({
-    title: 'The curse is lifted!',
-    text: 'You brought home all four relics and the Heart of the Sea.<br>Thank you for playing! The whole ocean is yours: keep exploring, hunting treasure and sinking pirates.',
+    title, text,
     buttons: [{ label: 'Keep sailing', onClick: () => { sfx.click(); hidePanel(); mode = 'sea'; } }],
   });
 }
-const relics = () => save.bosses.filter((id) => id !== 'kraken').length; // the Kraken's heart isn't one of the four
+const relics = () => save.bosses.filter((id) => ['crab', 'flagship', 'serpent', 'galleon'].includes(id)).length; // the four relics
 
 // Boss lairs: sail into the one the story points at and the rocks rise around you and the boss.
 // Once the story is over, each boss can be fought again as a legend: twice as tough, hitting harder,
 // for a set of legendary sails.
-const legends = () => (save.story >= END ? Object.keys(LAIRS).filter((id) => !save.legends.includes(id)) : []);
+const legends = () => (save.story >= END ? Object.keys(LAIRS).filter((id) => save.bosses.includes(id) && !save.legends.includes(id)) : []);
 const legendName = (id) => LAIRS[id].title[0].replace(/^The /, 'The Legendary ');
+let justWon = null; // a lair just won: no rematch there until you've sailed out of it
 function checkLairs(e, n) {
   if (fight) return;
+  const near = (l) => Math.hypot(LAIRS[l].at[0] - e, LAIRS[l].at[1] - n);
+  if (justWon && near(justWon) > LAIR_RING + 10) justWon = null;
   const story = STEPS[save.story].boss;
-  const id = [...(story ? [story] : []), ...legends()].find((l) => Math.hypot(LAIRS[l].at[0] - e, LAIRS[l].at[1] - n) < LAIR_ENTER);
+  const id = [...(story ? [story] : []), ...legends()].find((l) => l !== justWon && near(l) < LAIR_ENTER);
   if (!id) return;
   const lair = LAIRS[id], w = toWorld(...lair.at), legend = id !== story;
   fight = { id, won: null, legend };
@@ -414,6 +449,7 @@ function updateFight(dt) {
     if (fight.won > 4) {
       enemies.clear();
       ocean.lowerFence();
+      justWon = fight.id;
       fight = null;
     }
   }
@@ -485,16 +521,116 @@ function openPort(id) {
       { icon: icon('gear'), name: 'Gear shop', text: `${SLOTS} slots of ship gear`, onClick: () => { sfx.click(); openShop(id); } },
       { icon: `<svg viewBox="0 0 24 24">${UPGRADES.hull.icon}</svg>`, name: 'Shipyard', text: 'Upgrades that last for good',
         onClick: () => { sfx.click(); openShipyard(id); } },
-      { icon: icon('chart'), name: 'Sail to…', text: travelTo(id) ? 'Any port you have found' : 'Find more ports first',
-        disabled: !travelTo(id), onClick: () => { sfx.click(); openTravel(id); } },
+      { icon: icon('chart'), name: 'Sail to…', text: laden() ? 'Not with cargo aboard' : travelTo(id) ? 'Any port you have found' : 'Find more ports first',
+        disabled: laden() || !travelTo(id), onClick: () => { sfx.click(); openTravel(id); } },
       ...(id === 'home' ? [{ icon: icon('port'), name: 'Harbour Fund', text: 'Rebuild Home Harbour', onClick: () => { sfx.click(); openFund(); } }] : []),
+      ...(trading() && MARKETS.includes(id) ? [{ icon: `<svg viewBox="0 0 24 24">${CRATE_ICON}</svg>`, name: 'Market', text: `Buy ${GOODS[made(id)].name.toLowerCase()}, sell cargo`,
+        onClick: () => { sfx.click(); openMarket(id); } }] : []),
+      ...(boardUp() ? [{ icon: `<svg viewBox="0 0 24 24">${SKULL}</svg>`, name: 'Bounty Board', text: 'Wanted: the Grey Flag', onClick: () => { sfx.click(); openBoard(id); } }] : []),
     ],
-    buttons: [{ label: 'Set sail', onClick: () => { sfx.click(); hidePanel(); mode = 'sea'; } }],
+    buttons: [{ label: 'Set sail', onClick: () => { sfx.click(); trade.setSail(); hidePanel(); mode = 'sea'; } }],
   });
 }
 const travelTo = (id) => save.ports.some((to) => to !== id && isOpen(PORTS[to].region));
 const REPAIR_ICON = '<svg viewBox="0 0 24 24"><path d="M14 4a4 4 0 0 0 5 5l-9 9a2 2 0 0 1-3-3l9-9"/><path d="M4 20l3-3"/></svg>';
 const back = (id) => [{ label: 'Back', quiet: true, onClick: () => { sfx.click(); openPort(id); } }];
+
+// ---------- trading and bounties (Part Two) ----------
+
+// The raid on Home Harbour: smoke over the town, and a warning as you sail in.
+let raidWarned = false;
+function raidSmoke(dt) {
+  const town = toWorld(...PORTS.home.at);
+  if (Math.random() < dt * 4) fx.puff(town.x + (Math.random() - 0.5) * 14, 2 + Math.random() * 3, town.z + (Math.random() - 0.5) * 14, 1.6, 0x5a5f66);
+  const m = toMap(p.x, p.z);
+  if (!raidWarned && Math.hypot(PORTS.home.at[0] - m.e, PORTS.home.at[1] - m.n) < RAID.near) {
+    raidWarned = true;
+    setTimeout(() => { banner('The Grey Flag is in the harbour!', 'Sink their ships before they reach the Brazier'); sfx.sharkWarn(); }, 1500); // after the region's banner
+  }
+}
+
+const trading = () => save.story > END; // Kaelen opens the markets at the start of Part Two
+const made = (id) => Object.keys(GOODS).find((g) => GOODS[g].port === id);
+const laden = () => trade.carried(save.cargo) > 0;
+const SKULL = '<path d="M12 3a7 7 0 0 0-7 7c0 2.5 1.3 4.2 3 5.2V18h8v-2.8c1.7-1 3-2.7 3-5.2a7 7 0 0 0-7-7z"/><circle cx="9.3" cy="10.5" r="1.5"/><circle cx="14.7" cy="10.5" r="1.5"/><path d="M10.5 18v3M13.5 18v3"/>';
+const goodIcon = (g) => `<svg viewBox="0 0 24 24">${GOODS[g].icon}</svg>`;
+
+function showCargo() {
+  const n = trade.carried(save.cargo);
+  $('cargo').classList.toggle('on', n > 0);
+  $('cargo').lastChild.textContent = `${n}/${HOLD}`;
+}
+
+// The Market: buy what this port makes, sell what's in your hold.
+function openMarket(id) {
+  trade.arrive(id);
+  const local = made(id), held = trade.carried(save.cargo);
+  const shown = [local, ...Object.keys(save.cargo).filter((g) => g !== local)];
+  const others = Object.keys(GOODS).filter((g) => !shown.includes(g)).map((g) => `${GOODS[g].name} ${trade.sellPrice(id, g)}`).join(' · ');
+  showPanel({
+    title: 'Market',
+    text: `Gold <b>${gold}</b> · Hold <b>${held} / ${HOLD}</b><br><i>Buy where it's made, sell far away. Also buys: ${others}</i>`,
+    rows: shown.map((g) => {
+      const c = save.cargo[g], buy = trade.buyPrice(id, g), room = HOLD - held, afford = buy ? Math.floor(gold / buy) : 0;
+      return {
+        icon: goodIcon(g), name: GOODS[g].name,
+        text: [buy != null ? `Buy for <b>${buy}</b>` : null, `Sells here for <b>${trade.sellPrice(id, g)}</b>`,
+          c ? `You have ${c.n} (paid ${Math.round(c.paid / c.n)} each)` : null].filter(Boolean).join(' · '),
+        buttons: [
+          ...(buy != null ? [{ label: 'Buy', disabled: !room || !afford, onClick: () => buyGood(id, g, 1) },
+            { label: 'Fill hold', disabled: !room || !afford, onClick: () => buyGood(id, g, room) }] : []),
+          ...(c ? [{ label: 'Sell', onClick: () => sellGood(id, g, 1) }, { label: 'Sell all', onClick: () => sellGood(id, g, c.n) }] : []),
+        ],
+      };
+    }),
+    buttons: back(id),
+  });
+}
+function buyGood(id, g, n) {
+  const spent = trade.buy(save.cargo, id, g, n, gold);
+  if (!spent) return;
+  setGold(gold - spent);
+  sfx.buy();
+  showCargo();
+  keep();
+  openMarket(id);
+}
+function sellGood(id, g, n) {
+  n = Math.min(n, save.cargo[g]?.n ?? 0);
+  const got = trade.sell(save.cargo, id, g, n);
+  setGold(gold + got);
+  sfx.coin();
+  showCargo();
+  const run = STEPS[save.story].trade;
+  if (run && run.good === g && run.at === id) { // a story trade run
+    save.sunk += n;
+    if (save.sunk >= run.count) {
+      banner('Delivered!', `${run.count} crates of ${GOODS[g].name.toLowerCase()}`);
+      advance();
+      openPort(id); // whoever's waiting here has something to say
+      return;
+    }
+  }
+  keep();
+  openMarket(id);
+}
+
+// The Bounty Board: a wanted poster for each Brotherhood captain you've heard of.
+const boardUp = () => STEPS.slice(0, save.story).some((s) => s.board);
+function openBoard(id) {
+  const heard = (c) => STEPS.slice(0, save.story).some((s) => s.heard === c);
+  showPanel({
+    title: 'Bounty Board',
+    text: 'Madame Sallow: "Mourne\'s captains, darling. Sink them, and the merchants pay."',
+    rows: Object.entries(CAPTAINS).map(([c, cap]) => {
+      const sunk = save.bounties.includes(c), known = heard(c) || sunk;
+      return known
+        ? { face: portrait(cap.face), name: cap.name, text: `${cap.poster} Hides at ${cap.hideout}.`, tag: sunk ? 'Sunk' : `${cap.reward} gold`, done: sunk }
+        : { face: portrait({ skin: 0x9a948b, hair: 0x6a6e75, hat: 'tricorn', hatColor: 0x4a4e55 }), name: 'Unknown captain', text: 'Sallow is still asking around.', tag: '?' };
+    }),
+    buttons: back(id),
+  });
+}
 
 // Three pieces of gear for sale, and any gear waiting in your hold (free to fit).
 // With every slot full, a new piece swaps out one you pick, which goes into the hold.
@@ -623,6 +759,10 @@ function openTravel(id) {
 function sunk() {
   mode = 'panel';
   sides.playerSunk();
+  bounties.playerSunk();
+  const spilled = trade.carried(save.cargo);
+  save.cargo = {};
+  showCargo();
   if (fight) { // the boss stays in its lair; try again later
     barks.length = 0;
     enemies.setLegend(false);
@@ -634,7 +774,7 @@ function sunk() {
   setGold(gold - lost);
   showPanel({
     title: 'Sunk!', tone: 'lost',
-    text: `You lost half your gold: <b>${lost}</b>. A fishing boat tows you back to ${PORTS[port].name}.<br><i>Old Cob: "${COB.sunk}"</i>`,
+    text: `You lost half your gold: <b>${lost}</b>${spilled ? ` and ${spilled} crates of cargo` : ''}. A fishing boat tows you back to ${PORTS[port].name}.<br><i>Old Cob: "${COB.sunk}"</i>`,
     buttons: [{ label: 'Back to port', onClick: () => {
       sfx.click();
       enemies.clear();
@@ -897,6 +1037,8 @@ function frame(dt) {
   fog.update(p.x, p.z, time);
   currents.update(p.x, p.z, time);
   harbour.update(time);
+  trade.update(dt);
+  if (STEPS[save.story].raid && mode === 'sea') raidSmoke(dt);
   brazier.update(time, flamesLit());
   updateBarks(dt);
 
@@ -922,8 +1064,9 @@ function frame(dt) {
   }
   if (sailing) {
     enemies.update(dt, time, p, stage.camera);
-    if (!fight && !sides.busy()) roam(dt, p, region);
+    if (!fight && !sides.busy() && !bounties.busy()) roam(dt, p, region);
     sides.update(dt, time);
+    bounties.update(dt, time);
     updateFinds(time);
     life.update(dt, time, p, region, ocean.clearAt);
     if (region === 'maelstrom' && !fight && p.sinking < 0) { // the swirl carries you round its eye
@@ -1001,7 +1144,7 @@ stage.renderer.setAnimationLoop((now) => {
 
 // Lets the browser console inspect the game while developing. teleport(e, n): jump to a spot on the map.
 if (import.meta.env.DEV) {
-  window.game = { stage, ship, ocean, enemies, loot, fx, gear, save, frame, setSail, openChart, openPort, setGold, advance, sides, finds,
+  window.game = { stage, ship, ocean, enemies, loot, fx, gear, save, frame, setSail, openChart, openPort, setGold, advance, sides, finds, trade, bounties, showCargo,
     get fight() { return fight; },
     teleport: (e, n) => { const w = toWorld(e, n); placeShip(w.x, w.z, p.heading); },
     get mode() { return mode; }, get region() { return region; }, get gold() { return gold; } };

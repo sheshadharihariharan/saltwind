@@ -6,9 +6,13 @@
 // The story is a list of steps; save.story is the index of the step you're on. Each step has a goal
 // (shown under the compass) and one way to finish it:
 //   talk: a port id. Go into that port and a chat plays (who: a person below; lines: see below;
-//         end: the last chat of the story).
-//   sink: a number of enemies to sink (kind: only that kind counts).
+//         end: { title, text } the last chat of a part of the story: fireworks and that message).
+//   sink: a number of enemies to sink (kind: only that kind counts; raid: they come at Home Harbour).
 //   boss: a lair id (map.js LAIRS). Beat the boss there.
+//   trade: { good, count, at } (Part Two). Sell that many crates of a good (trade.js GOODS) at port `at`.
+//   bounty: a captain id (bounties.js CAPTAINS). Sink that Brotherhood captain at their hideout.
+// heard: a captain's wanted poster goes up on the Bounty Board once this chat is done.
+// board: the Bounty Board appears in ports once this chat is done.
 // A line is a string (said by `who`), { who, text } (someone else speaks), or
 // { choice: [[button, reply], [button, reply]] }: two buttons; the reply to the one picked is said next.
 // A region's fog lifts once save.story reaches the step in its `opens` (map.js REGIONS).
@@ -123,15 +127,129 @@ export const STEPS = [
 
   // ---------- Finale: the Heart of the Sea ----------
   { goal: 'Defeat the Kraken in the Eye of the Maelstrom', boss: 'kraken' },
-  { goal: 'Carry the Heart of the Sea home', talk: 'home', who: 'mara', end: true, lines: [
+  { goal: 'Carry the Heart of the Sea home', talk: 'home', who: 'mara', lines: [
     'Breathe that in, skipper! Pure salt wind from the west, not a speck of grey rot in it!',
     { who: 'kaelen', text: 'The reef has gone quiet as a lagoon! Even the puffers deflated enough for me to sail down with a barrel of spiced rum!' },
     { who: 'bram', text: 'AND THE THUNDER BROKE OVER GALE ROOST AT NOON! Saw the sun for the first time in nineteen years. Nearly blinded my one good eye!' },
     { who: 'ylva', text: "Don't get soft on us, southerner. The northern passages are clear, and there's still plenty of pirate gold frozen in the floes." },
     'You saved Home Harbour, Captain. The Bone-Needle is yours to keep, the fog is gone for good, and the whole Sundered Reach is open water. Sail wherever the wind takes you!',
+  ], end: { title: 'The curse is lifted!',
+    text: 'You brought home all four relics and the Heart of the Sea.<br>The whole ocean is yours! And word has come from Coral Cay: Kaelen has news.' } },
+
+  // ================= Part Two: the Grey Flag =================
+
+  // ---------- Chapter 5: Grey Flags ----------
+  { goal: 'Kaelen has news at Coral Cay', talk: 'reef', who: 'kaelen', lines: [
+    'Captain! Look at the harbour. Three merchant ketches this week! With the fog gone, the whole Reach wants to trade again.',
+    "Coral Cay's pearl beds are full to bursting, and Bram's lot up at Gale Roost would swap their own boots for something shiny.",
+    "Here's the trick: buy a thing where it's made, and sell it where it isn't. The further you carry it, the more it fetches.",
+    { choice: [
+      ['Easy money, then.', 'Easy? Two ketches went missing off the Reef last week. Not a plank found. Just a grey flag drifting on the tide.'],
+      ['What could go wrong?', 'Funny you should ask. Two ketches went missing off the Reef last week. Not a plank found. Just a grey flag drifting on the tide.'],
+    ] },
+    "Take five crates of pearls up to Gale Roost, and keep your guns loaded. The Market here will sell you as many as your hold can carry.",
   ] },
-  { goal: 'The curse is lifted. The sea is yours!' },
+  { goal: 'Sell 5 crates of pearls at Gale Roost', trade: { good: 'pearls', count: 5, at: 'storm' } },
+  { goal: 'Talk to Bram at Gale Roost', talk: 'storm', who: 'bram', heard: 'garrick', lines: [
+    "PEARLS! The lads will be wearing them in their beards by supper. Fine haul, skipper.",
+    'Grey flags, you say? Aye, I know that rag. The Brotherhood of the Grey Flag.',
+    "While the fog lay thick, no navy in the world could find them. Smugglers, wreckers, cut-throats. They grew fat in the grey, and now the fog's gone they're hungry.",
+    "Their nearest nest is out on the Reef: a captain called Gull-Eye Garrick, hiding at Gull Shoals, east of Coral Cay.",
+    "He whistles like a bosun when a fight turns against him, and his whole crew comes running. Sink him fast, and keep an eye on the horizon.",
+  ] },
+  { goal: 'Sink Gull-Eye Garrick at Gull Shoals', bounty: 'garrick' },
+  { goal: "Show Garrick's flag to Madame Sallow at Smuggler's Atoll", talk: 'smuggler', who: 'sallow', board: true, lines: [
+    'Well, well. Garrick\'s grey flag, still reeking of his cheap tobacco. You have been busy, darling.',
+    'Yes, I know that mark. Before the fog lifted I ran cargo for the Brotherhood. Everybody did. It was that or starve.',
+    'Their master is Silas Mourne. They call him the Fog-King. For nineteen years he ruled the grey, and he wants it back.',
+    { choice: [
+      ['How do you bring fog back?', 'Only one way, darling. Throw the Heart of the Sea back into the trench. And it sits in your harbour\'s Brazier, does it not?'],
+      ['Why tell me any of this?', 'Because Mourne never pays his debts, and you always do. Besides, the Heart sits in your harbour\'s Brazier. He will come for it.'],
+    ] },
+    'Mourne keeps four captains between himself and trouble. Garrick was the first. I shall pin the others on a Bounty Board in every port, as I hear of them.',
+    'And sail carefully with a full hold. The Brotherhood can smell cargo from three leagues off.',
+  ] },
+
+  // ---------- Chapter 6: Fire on the Water ----------
+  { goal: 'Sell 6 crates of storm-canvas at Rime-Post', trade: { good: 'canvas', count: 6, at: 'frozen' } },
+  { goal: 'Talk to Ylva at Rime-Post', talk: 'frozen', who: 'ylva', heard: 'vex', lines: [
+    'Storm-canvas. Good. Ours froze and split like kindling. Now my sledge-boats can sail again.',
+    'Not that there is much left to sail. My fur convoy went south three days ago. One ship came back, and that one was on fire.',
+    'A woman in black stood on the deck of a grey ship, laughing, and every boat she touched went up like a torch.',
+    { choice: [
+      ['Where did she go?', 'Back to her nest at Cinder Reach, south-west of Gale Roost. The smoke hangs over it like a flag.'],
+      ['Who was she?', 'Bram calls her Widow Vex. Buried three husbands, and burned the ships of all three. She hides at Cinder Reach, south-west of Gale Roost.'],
+    ] },
+    'She sends burning ships at anything that floats. Sink them from far off, southerner, or they will take your planks with them.',
+  ] },
+  { goal: 'Sink Widow Vex at Cinder Reach', bounty: 'vex' },
+
+  // ---------- Chapter 7: Iron in the Ice ----------
+  { goal: 'Sell 6 crates of furs at Lantern Spire', trade: { good: 'furs', count: 6, at: 'abyss' } },
+  { goal: 'Talk to Orin at Lantern Spire', talk: 'abyss', who: 'orin', heard: 'ironjaw', lines: [
+    "Furs! How thoughtful. I don't feel the cold myself, you understand, but the new lamplighters do. Since the fog lifted, the living have come back to the Spire.",
+    'And I can see a long way from the top of the tower, now the night is not so thick. Last week I saw something I did not like.',
+    'A grey ship with an iron jaw, Captain, grinding through the ice floes east of Rime-Post. It broke a whaler in two with one bite.',
+    { choice: [
+      ['Who sails her?', 'A great bear of a man with an iron plate on his chin. The whalers call him Hob Ironjaw. His nest is the Grinding Floes.'],
+      ['A ship that bites?', 'Rams, I should say. The whalers call her master Hob Ironjaw, for the iron on his chin and the iron on his prow. His nest is the Grinding Floes.'],
+    ] },
+    'When the red line shows on the water, steer aside. And mind the black kegs he leaves behind him. They are not full of tea.',
+  ] },
+  { goal: 'Sink Hob Ironjaw at the Grinding Floes', bounty: 'ironjaw' },
+
+  // ---------- Chapter 8: Lights in the Murk ----------
+  { goal: 'Sell 6 crates of lantern oil at Home Harbour', trade: { good: 'oil', count: 6, at: 'home' } },
+  { goal: 'Talk to Mara at Home Harbour', talk: 'home', who: 'mara', heard: 'murk', lines: [
+    'Lantern oil! Bless you, skipper. With trade back, the harbour stays open past dark, and the lamps drink it by the barrel.',
+    "But I've had a letter from the lamplighters at Lantern Spire. Ships are going missing in the west again, and these ones were following lights.",
+    "Not anglerfish this time. A grey ship hung with drowned lanterns, that fades into the dark like one of Vane's ghosts.",
+    { choice: [
+      ['Another Grey Flag captain.', "Mother Murk, the letter says. The last of Mourne's four. She hides at the Drowned Lanterns, north-west of the Spire."],
+      ['Ghosts again?', "No ghost, skipper. A woman called Mother Murk who has learned the ghosts' tricks. She hides at the Drowned Lanterns, north-west of the Spire."],
+    ] },
+    'Shoot only when you can see her, same as the Galleon. And come home safe.',
+  ] },
+  { goal: 'Sink Mother Murk at the Drowned Lanterns', bounty: 'murk' },
+
+  // ---------- Finale: the Fog-King ----------
+  { goal: "All four captains are sunk. Tell Madame Sallow at Smuggler's Atoll", talk: 'smuggler', who: 'sallow', lines: [
+    'Four grey flags on my wall, darling. Mourne must be chewing his own hat.',
+    'Which is exactly what worries me. A man with no captains left has nothing left to lose.',
+    'My little birds say he has gathered every Brotherhood ship in the Reach, and they sailed this morning. South.',
+    { choice: [
+      ['Home Harbour!', 'Home Harbour. He is going for the Heart in your Brazier, and he is going for it now.'],
+      ["What's south?", 'Your Home Harbour, darling. And the Heart of the Sea, sitting in its Brazier.'],
+    ] },
+    'Sail, darling. Sail like the fog is on your heels, because it will be.',
+  ] },
+  { goal: 'Drive the Grey Flag out of Home Harbour', sink: 8, kind: 'brother', raid: true },
+  { goal: 'Check on Mara at Home Harbour', talk: 'home', who: 'mara', lines: [
+    'You came! They were at the dock, skipper. They were at the BRAZIER.',
+    "The Heart's safe. Old Cob dropped the first one who touched it with a caulking mallet. But Mourne himself never came ashore.",
+    'He watched from his flagship, the Black Tide, and when your sails came over the horizon he turned and ran.',
+    "Kaelen's fishermen saw him go: north-east, far past Gale Roost, to a hidden cove the smugglers call Grey Haven.",
+    { choice: [
+      ['Then that is where I am going.', "I thought you'd say that. Old Cob has patched every plank he could reach. Go and finish it."],
+      ['Is the town all right?', "A few burnt awnings and a lot of angry fishwives. We'll mend. Now go and finish it, skipper."],
+    ] },
+    "She's a big ship, like the Admiral's, only meaner. Knock out her cannons first, and watch the water behind her.",
+  ] },
+  { goal: 'Sink the Black Tide at Grey Haven', boss: 'greyhaven' },
+  { goal: "Bring Mourne's grey flag home", talk: 'home', who: 'mara', lines: [
+    "There it is! The Fog-King's own flag. We'll hang it from the lighthouse, skipper, so every ship in the Reach can see it.",
+    { who: 'sallow', text: 'I came the moment I heard, darling. Silas Mourne, sunk. I shall have to find a new line of work. Perhaps an honest one. Perhaps.' },
+    { who: 'kaelen', text: 'The pearl boats are already lining up! Not a grey flag between here and the Reef.' },
+    { who: 'bram', text: "AND I'M BUYING THE RUM. ALL OF IT." },
+    { who: 'ylva', text: 'Hmph. Not bad, southerner. Not bad at all.' },
+    { who: 'orin', text: "I'll keep the Spire lit for you, Captain. A keeper's work is never quite done." },
+    "The fog's gone, the Grey Flag's gone, and the sea belongs to everyone who sails it. Thanks to you. Fair winds, skipper.",
+  ], end: { title: 'The Grey Flag is struck!',
+    text: "You sank Mourne's four captains, saved Home Harbour and sent the Black Tide to the bottom.<br>Thank you for playing! The Reach is free: keep trading, hunting legends and exploring." } },
+  { goal: 'The Grey Flag is struck. Trade, hunt and sail wherever you like!' },
 ];
+// The step once the curse is lifted (the start of Part Two).
+export const END = 17;
 
 // The steps at which each Brazier flame lights (once each relic is handed in at home), then the Heart of the Sea.
 export const FLAMES = [6, 9, 12, 15, 17];
@@ -156,6 +274,7 @@ export const COB = {
 // Where the current step wants you to go: { kind: 'port' | 'lair', id } or null.
 export function target(step) {
   const s = STEPS[step];
+  if (s?.trade) return { kind: 'port', id: s.trade.at };
   if (s?.talk) return { kind: 'port', id: s.talk };
   if (s?.boss) return { kind: 'lair', id: s.boss };
   return null;

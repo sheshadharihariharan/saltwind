@@ -6,6 +6,7 @@ import { seeded, rock, coral, sandbar, island, town, berg, wreck, camp, fort, ca
 import { laneDistance, WIDTH } from './currents.js';
 import { BOUND, toMap, toWorld, regionAt, REGIONS, PORTS, PORT_CLEAR, LAIRS, LAIR_RING } from './map.js';
 import { QUEST_SPOTS } from './sidequests.js';
+import { BOUNTY_SPOTS } from './bounties.js';
 
 const SIZE = 64; // chunk width in world units
 const KEEP = 1; // chunks this far from the ship's chunk are kept built (3 x 3)
@@ -31,7 +32,7 @@ function open(x, z) {
   const m = toMap(x, z);
   if (Math.abs(m.e) > BOUND - 12 || Math.abs(m.n) > BOUND - 12) return false;
   if (Object.values(LAIRS).some((l) => Math.hypot(m.e - l.at[0], m.n - l.at[1]) < LAIR_RING + 8)) return false;
-  if (QUEST_SPOTS.some(([e, n]) => Math.hypot(m.e - e, m.n - n) < SPOT_CLEAR)) return false;
+  if ([...QUEST_SPOTS, ...BOUNTY_SPOTS].some(([e, n]) => Math.hypot(m.e - e, m.n - n) < SPOT_CLEAR)) return false;
   if (laneDistance(m.e, m.n) < WIDTH + 4) return false;
   return Object.values(PORTS).every((p) => Math.hypot(m.e - p.at[0], m.n - p.at[1]) > PORT_CLEAR);
 }

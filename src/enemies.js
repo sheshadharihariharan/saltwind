@@ -12,12 +12,18 @@
 //   ghost (Abyss): a see-through pirate that fades away (cannonballs pass through) and back again to fire.
 //   angler (Abyss): lurks under the water with only its glowing lure showing, then lunges up to bite.
 //   tower / fortTower: the cannon tower of a pirate camp or a sea fort. Stands still and fires at you when close.
+//   brother (Part Two): a Brotherhood of the Grey Flag sloop. Fights like a pirate sloop.
+//   chief: a Brotherhood bounty captain (bounties.js), a big grey ship firing fans of cannonballs, with one trick (e.trick):
+//            reinforce: whistles up two more Brotherhood sloops once it's half sunk.
+//            fireships: sends a fire ship at you every so often.
+//            ram:       fights like an ice-breaker (red strip, then a ram), and drops mines as it goes.
+//            fade:      fades away like a ghost ship (cannonballs pass through) and back again.
 import * as THREE from 'three';
 import { createShip, wrap } from './ship.js';
 import { createTurtle, createShark, createMines, createJelly, createPuffer, PUFF_REACH, createFlames, createEel, createAngler, createTower } from './creatures.js';
 import { createKraken } from './kraken.js';
 import { createCrab } from './crab.js';
-import { createFlagship } from './flagship.js';
+import { createFlagship, BLACK_TIDE } from './flagship.js';
 import { createSerpent } from './serpent.js';
 import { createGalleon } from './galleon.js';
 import { flat } from './stage.js';
@@ -48,6 +54,8 @@ const SAND_DRAG = 0.45; // ships on a sandbar only get this much of their speed
 
 const FIRESHIP = { look: { hull: 0x3a2a20, deck: 0x5a4030, sail: 0xff8a3c, stripe: 0x2a1a10, flag: 0xff8a3c }, stats: { maxSpeed: 6, turn: 1.7, reload: 99, hp: 15 } };
 const CAPTAIN = { look: { hull: 0x2e1d14, deck: 0xb08850, sail: 0x23262b, stripe: 0xffc93c, flag: 0xffc93c }, stats: { maxSpeed: 4.6, turn: 1.4, reload: 3, hp: 70, size: 1.35 } };
+const BROTHER = { look: { hull: 0x3a3d42, deck: 0x8a8478, sail: 0x9aa0a6, stripe: 0x2a2e33, flag: 0xc9ccd0 }, stats: { maxSpeed: 5.3, turn: 1.8, reload: 2.4, hp: 34 } };
+const CHIEF = { look: { hull: 0x26282c, deck: 0x6b6458, sail: 0x6d737a, stripe: 0xd9dde0, flag: 0xd9dde0 }, stats: { maxSpeed: 4.8, turn: 1.5, reload: 2.6, hp: 70, size: 1.35 } };
 const HARPOONER = { look: { hull: 0x4a5a3a, deck: 0xa8a070, sail: 0xd9d0b0, stripe: 0x4a7a3a, flag: 0x4a7a3a }, stats: { maxSpeed: 5.8, turn: 2, reload: 99, hp: 25 } };
 const FIRE = { near: 2.6, blast: 18, radius: 3.2 }; // a fire ship blows up this close, hurting everything within radius
 const FAN = [-0.3, -0.15, 0, 0.15, 0.3]; // a captain's broadside: five balls spread out
@@ -61,13 +69,15 @@ const BITE = { near: 4.5, lunge: 0.6, up: 3, rest: 2, damage: 12 }; // an angler
 const TOWER = { reach: 17, every: 2.6, lead: 0.5 }; // a cannon tower fires this far, this often, aiming a little ahead
 const PROW = new THREE.ConeGeometry(0.5, 1.4, 4).rotateZ(-Math.PI / 2);
 const STRIP_GEO = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0.5, 0, 0);
+const TRICK = { fireEvery: 9, fireMax: 2, mineEvery: 3.5 }; // bounty captains: seconds between fire ships (and how many at once), between mines
 const ELITE = { hp: 3, size: 1.25, gold: 3 }; // a named enemy: three times as tough, a bit bigger, three times the gold
 const SPEAR = new THREE.CylinderGeometry(0.05, 0.05, 1.6, 6).rotateZ(Math.PI / 2);
 const ROPE = new THREE.CylinderGeometry(0.04, 0.04, 1, 4).translate(0, 0.5, 0);
 const AIM = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0.5, 0, 0);
 const up = new THREE.Vector3(0, 1, 0), span = new THREE.Vector3();
 
-export const BOSSES = { kraken: createKraken, crab: createCrab, flagship: createFlagship, serpent: createSerpent, galleon: createGalleon };
+export const BOSSES = { kraken: createKraken, crab: createCrab, flagship: createFlagship, serpent: createSerpent, galleon: createGalleon,
+  blacktide: (...args) => createFlagship(...args, BLACK_TIDE) };
 
 // Gear effects on enemies.
 const SLOW = 3; // seconds a chain shot slows an enemy, to half speed
@@ -112,6 +122,8 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
     angler: { gold: 5, barY: 2.4, hitColor: 0x3a3550, make: () => createAngler(scene), think: angler },
     tower: { gold: 8, barY: 4.8, hitColor: 0x8a5a33, make: () => createTower(scene, false), think: tower },
     fortTower: { gold: 12, barY: 5, hitColor: 0x9a948b, make: () => createTower(scene, true), think: tower },
+    brother: { gold: 6, barY: 3.3, hitColor: 0x8a5a33, make: () => createShip(scene, BROTHER.look, BROTHER.stats), think: sloop },
+    chief: { gold: 15, barY: 4.6, hitColor: 0x8a5a33, make: makeChief, think: chief },
   };
 
   // An ice-breaker: an iron prow on the bow and a red strip on the water before it rams.
@@ -145,6 +157,35 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
     ship.fade = (opacity) => mats.forEach((m) => { m.opacity = opacity; });
     const remove = ship.remove;
     ship.remove = () => { remove(); mats.forEach((m) => m.dispose()); };
+    return ship;
+  }
+
+  // A bounty captain's ship. Ready for any trick: an iron prow and a ram strip (shown only for a rammer),
+  // and its own see-through colours so it can fade.
+  function makeChief() {
+    const ship = createShip(scene, CHIEF.look, CHIEF.stats);
+    const prow = new THREE.Mesh(PROW, MORTAR_MAT);
+    prow.position.set(2.1, 0.35, 0);
+    prow.visible = false;
+    ship.body.add(prow);
+    ship.prow = prow;
+    const strip = new THREE.Mesh(STRIP_GEO, flat(0, 0xff4a3a));
+    strip.scale.set(13, 1, 2);
+    strip.position.set(1, 0.06, 0);
+    strip.visible = false;
+    ship.root.add(strip);
+    ship.warn = (on, t = 0) => { strip.visible = on; strip.material.opacity = 0.4 + 0.15 * Math.sin(t * 18); };
+    const mats = [];
+    ship.body.traverse((o) => {
+      if (!o.isMesh || o === prow) return;
+      o.material = o.material.clone();
+      o.material.transparent = true;
+      mats.push(o.material);
+    });
+    ship.fade = (opacity) => mats.forEach((m) => { m.opacity = opacity; });
+    ship.onSink = () => { strip.visible = false; ship.fade(1); };
+    const remove = ship.remove;
+    ship.remove = () => { remove(); strip.material.dispose(); mats.forEach((m) => m.dispose()); };
     return ship;
   }
 
@@ -281,12 +322,40 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
         e.aim -= dt;
         if (e.aim <= 0) {
           const shots = e.body.fire(side);
-          if (shots) api.shoot(e.kind === 'captain' ? fan(s, shots[0]) : shots, dist);
+          if (shots) api.shoot(e.kind === 'captain' || e.kind === 'chief' ? fan(s, shots[0]) : shots, dist);
           e.aim = 0.4;
         }
       }
     }
     return [want, throttle];
+  }
+
+  // A bounty captain: fights like a pirate captain, plus its trick.
+  function chief(e, dt, p, dist, toP) {
+    const s = e.body.state;
+    if (e.trick === 'reinforce' && !e.called && s.hp < s.maxHp / 2) {
+      e.called = true;
+      const help = [spawn('brother', p, 16, 22), spawn('brother', p, 16, 22)].filter(Boolean);
+      if (help.length) api.say?.(`${e.elite} whistles for help!`, 'More grey flags join the fight');
+    }
+    if (e.trick === 'fireships' && p.sinking < 0 && dist < 30) {
+      e.fire = (e.fire ?? 3) - dt;
+      if (e.fire <= 0 && list.filter((f) => f.kind === 'fireship' && !f.sunk).length < TRICK.fireMax) {
+        e.fire = TRICK.fireEvery;
+        if (spawn('fireship', p, 16, 22) && !e.warned) { e.warned = true; api.say?.(`${e.elite} lights a fire ship!`, 'Sink it from afar: it blows up'); }
+      }
+    }
+    if (e.trick === 'ram') {
+      e.body.prow.visible = true;
+      e.drop = (e.drop ?? TRICK.mineEvery) - dt;
+      if (e.drop <= 0 && dist < 24 && p.sinking < 0 && mines.count() < 10) {
+        e.drop = TRICK.mineEvery;
+        mines.drop(s.x - Math.cos(s.heading) * 2.4, s.z - Math.sin(s.heading) * 2.4);
+      }
+      return raider(e, dt, p, dist, toP);
+    }
+    if (e.trick === 'fade') return ghost(e, dt, p, dist, toP);
+    return sloop(e, dt, p, dist, toP);
   }
 
   // Lazy curves that slowly drift toward the player.
@@ -767,6 +836,7 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
       hurtPlayer: (amount, x, y, z) => api.hurtPlayer(amount, x + cx, y, z + cz),
       shoot: (shots, dist) => api.shoot(shots.map((c) => ({ ...c, x: c.x + cx, z: c.z + cz })), dist),
       spawn: (kind) => spawn(kind, player),
+      mine: (x, z) => { if (mines.count() < 12) mines.drop(x + cx, z + cz); },
     };
     const local = new Proxy({}, { // the player, seen from the lair's middle
       get: (_, k) => (k === 'x' ? player.x - cx : k === 'z' ? player.z - cz : player[k]),
