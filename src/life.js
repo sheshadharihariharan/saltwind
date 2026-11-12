@@ -14,7 +14,9 @@ const mats = { fish: toon(0x9fb8c8), glow: new THREE.MeshBasicMaterial({ color: 
 mats.glow.userData.outlineParameters = { visible: false };
 
 const FISH = { every: [1.5, 3], near: [6, 14], time: 0.8, height: 1.3 }; // seconds; distance from the ship
-const DOLPHINS = { every: [30, 50], time: 7, minSpeed: 4, regions: ['home', 'reef', 'storm'] };
+// Dolphins: seconds between pods and how long one stays; how fast you must be sailing; where they start
+// (units beside and behind you); their own speed (at least `swim`, or a bit `faster` than you).
+const DOLPHINS = { every: [30, 50], time: 8, minSpeed: 4, regions: ['home', 'reef', 'storm'], beside: 5, behind: 8, swim: 6, faster: 1.25 };
 const WHALE = { every: [45, 80], near: [16, 22], rise: 2, stay: 4, regions: ['home', 'reef', 'storm', 'frozen'] };
 const GULLS = { every: [25, 40], time: 10, height: 7, radius: 6 };
 const BARRELS = { most: 2, every: [12, 20], near: [16, 24], pick: 2, coins: 2, gone: 60 };
@@ -105,16 +107,29 @@ export function createSeaLife(scene, fx, loot) {
 
     // Dolphins: a pod leaps alongside when you're sailing fast in warm water.
     podWait -= dt;
-    if (!pod && podWait <= 0 && p.speed > DOLPHINS.minSpeed && DOLPHINS.regions.includes(region)) pod = { t: 0, side: Math.random() < 0.5 ? 1 : -1 };
+    // They start a little behind and to one side, swim their own course a bit faster than you (weaving
+    // gently), overtake you leaping in and out of the water, and carry on past.
+    if (!pod && podWait <= 0 && p.speed > DOLPHINS.minSpeed && DOLPHINS.regions.includes(region)) {
+      const h = Math.atan2(p.vz, p.vx), side = Math.random() < 0.5 ? 1 : -1;
+      pod = { t: 0, h, x: p.x - Math.sin(h) * side * DOLPHINS.beside - Math.cos(h) * DOLPHINS.behind,
+        z: p.z + Math.cos(h) * side * DOLPHINS.beside - Math.sin(h) * DOLPHINS.behind,
+        speed: Math.max(DOLPHINS.swim, p.speed * DOLPHINS.faster), was: [0, 0, 0] };
+    }
     if (pod) {
       pod.t += dt;
-      const h = Math.atan2(p.vz, p.vx), sx = -Math.sin(h) * pod.side, sz = Math.cos(h) * pod.side;
+      const course = Math.atan2(p.vz, p.vx), turn = Math.atan2(Math.sin(course - pod.h), Math.cos(course - pod.h));
+      pod.h += (turn * 0.8 + Math.sin(pod.t * 0.8) * 0.06) * dt; // drift onto your course, weaving a little
+      pod.x += Math.cos(pod.h) * pod.speed * dt;
+      pod.z += Math.sin(pod.h) * pod.speed * dt;
+      const ch = Math.cos(pod.h), sh = Math.sin(pod.h);
       dolphins.forEach((d, i) => {
-        const leap = Math.sin(pod.t * 3 - i * 0.9), up = Math.max(0, leap);
+        const phase = pod.t * 2.6 - i * 0.9, leap = Math.sin(phase);
+        const back = -i * 2.2, out = (i % 2 ? 1 : -1) * i * 1.2; // a loose V behind the leader
         d.visible = pod.t < DOLPHINS.time;
-        d.position.set(p.x + sx * (4.5 + i * 1.6) + Math.cos(h) * (2 - i * 2.2), up * 1.4 - 0.4, p.z + sz * (4.5 + i * 1.6) + Math.sin(h) * (2 - i * 2.2));
-        d.rotation.set(0, -h, Math.cos(pod.t * 3 - i * 0.9) * 0.6);
-        if (leap > 0.97 && Math.random() < 0.3) fx.splash(d.position.x, d.position.z, 0.5);
+        d.position.set(pod.x + ch * back - sh * out, leap > 0 ? leap * 1.5 - 0.3 : -1.2, pod.z + sh * back + ch * out);
+        d.rotation.set(0, -pod.h, Math.cos(phase) * 0.7); // nose up on the way out, down on the way in
+        if (Math.sign(leap) !== Math.sign(pod.was[i]) && d.visible) fx.splash(d.position.x, d.position.z, 0.5); // in and out of the water
+        pod.was[i] = leap;
       });
       if (pod.t >= DOLPHINS.time) { pod = null; podWait = between(DOLPHINS.every); }
     }

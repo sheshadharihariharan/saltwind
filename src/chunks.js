@@ -43,6 +43,7 @@ function open(x, z) {
 export function createOcean(scene, on) {
   const chunks = new Map(); // 'i,j' -> chunk
   let fence = null; // the rocks around a boss fight: a chunk of its own, rising or sinking
+  const fixed = []; // solid things added later (Home Harbour's new buildings)
 
   function build(i, j) {
     const c = { i, j, group: new THREE.Group(), hits: [], rings: [], sandbars: [], movers: [], treasure: null, find: null };
@@ -218,7 +219,11 @@ export function createOcean(scene, on) {
       }
     }
     if (fence) yield* fence.hits;
+    yield* fixed;
   }
+
+  // Something solid that isn't part of any chunk: a circle of radius r at world (x, z).
+  const addHit = (x, z, r) => { fixed.push({ x, z, r, top: 2, kind: 'island' }); };
 
   // Push a ship out of rocks and bounce it. Returns how hard it hit (0 if it didn't).
   function collide(s, radius = 1) {
@@ -266,5 +271,5 @@ export function createOcean(scene, on) {
     return true;
   }
 
-  return { update, collide, solidAt, sandAt, clearAt, raiseFence, lowerFence, count: () => chunks.size };
+  return { update, collide, solidAt, sandAt, clearAt, raiseFence, lowerFence, addHit, count: () => chunks.size };
 }

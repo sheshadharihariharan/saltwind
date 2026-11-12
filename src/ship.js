@@ -52,7 +52,7 @@ export function steer(s, stats, dt, want, throttle) {
   return turn;
 }
 
-const PLAYER_LOOK ={ hull: 0xb5532c, deck: 0xd9a45b, sail: 0xfff4dc, stripe: 0xd8452e, flag: 0xd8452e };
+export const PLAYER_LOOK = { hull: 0xb5532c, deck: 0xd9a45b, sail: 0xfff4dc, stripe: 0xd8452e, flag: 0xd8452e };
 export const PLAYER_STATS = { maxSpeed: 7, turn: 2.2, reload: 1.2, hp: 100 };
 const SPIKE = new THREE.ConeGeometry(0.13, 0.7, 6).rotateZ(-Math.PI / 2); // points forward
 
@@ -77,7 +77,12 @@ export function createShip(scene, look = PLAYER_LOOK, stats = { ...PLAYER_STATS 
   stripe.position.copy(sail.position);
   const flag = new THREE.Mesh(FLAG, mat(look.flag));
   flag.position.set(-0.05, 2.7, 0);
-  body.add(new THREE.Mesh(HULL, mat(look.hull)), deck, mast, sail, stripe, flag);
+  const hull = new THREE.Mesh(HULL, mat(look.hull));
+  body.add(hull, deck, mast, sail, stripe, flag);
+  // New colours (a livery): { hull, deck, sail, stripe, flag }.
+  function setLook(l) {
+    for (const [m, c] of [[hull, l.hull], [deck, l.deck], [sail, l.sail], [stripe, l.stripe], [flag, l.flag]]) m.material = mat(c);
+  }
 
   const muzzles = [0.5, -0.4]; // cannon spots along the hull, on both sides
   const gear = new THREE.Group(); // parts added by gear during a voyage
@@ -211,5 +216,5 @@ export function createShip(scene, look = PLAYER_LOOK, stats = { ...PLAYER_STATS 
   }
 
   const ready = (side) => 1 - s.cool[side] / stats.reload;
-  return { state: s, root, body, stats, update, fire, ready, touches, hurt, reset, remove, addCannon, addSpikes, resetGear };
+  return { state: s, root, body, stats, update, fire, ready, touches, hurt, reset, remove, addCannon, addSpikes, resetGear, setLook };
 }

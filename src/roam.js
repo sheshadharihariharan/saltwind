@@ -10,9 +10,9 @@ const WAIT = [6, 12]; // seconds of calm after a group is sunk or gone
 const HOME_QUIET = 130; // a calm start: nothing turns up this close to Home Harbour
 const ONE_EACH = ['gunboat', 'turtle', 'jellies', 'captain', 'eels', 'harpoon']; // at most one of these in a group
 const SHIPS = ['sloop', 'gunboat', 'captain', 'harpoon', 'raider', 'ghost', 'fireship']; // kinds that can be a wanted pirate
-const WANTED = { chance: 0.15, bounty: 100 }; // how often a group has a wanted leader, and the bounty in gold
+const WANTED = { chance: 0.15, late: 0.3, bounty: 100 }; // how often a group has a wanted leader (late: after the story), the bounty
 const NAMES = ['Black Jessa', 'One-Eyed Wick', 'Mad Marlow', 'Salt Annie', 'Captain Gristle', 'Red Rowan', 'Barnacle Bess', 'Iron Tam'];
-const FLEET = { chance: 0.06, after: 6, sloops: 4, regions: ['home', 'storm', 'frozen', 'maelstrom'] }; // after: story step
+const FLEET = { chance: 0.06, late: 0.12, after: 6, end: 17, sloops: 4, regions: ['home', 'storm', 'frozen', 'maelstrom'] }; // after / end: story steps
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
@@ -34,7 +34,8 @@ export function createRoamers(enemies, say, story) {
     if (Object.entries(PORTS).some(([id, port]) => Math.hypot(port.at[0] - m.e, port.at[1] - m.n) < (id === 'home' ? HOME_QUIET : SAFE))) return;
 
     const { pool, group } = REGIONS[region];
-    const fleet = story() >= FLEET.after && FLEET.regions.includes(region) && Math.random() < FLEET.chance;
+    const late = story() >= FLEET.end; // the story is over: the pirates come back in force
+    const fleet = story() >= FLEET.after && FLEET.regions.includes(region) && Math.random() < (late ? FLEET.late : FLEET.chance);
     let kinds = [];
     if (fleet) kinds = ['captain', ...Array(FLEET.sloops).fill('sloop')];
     else {
@@ -45,7 +46,7 @@ export function createRoamers(enemies, say, story) {
       }
     }
     // A wanted pirate leads the group (always, for a fleet): tougher, and worth a bounty.
-    const leader = (fleet || Math.random() < WANTED.chance) ? kinds.findIndex((k) => SHIPS.includes(k)) : -1;
+    const leader = (fleet || Math.random() < (late ? WANTED.late : WANTED.chance)) ? kinds.findIndex((k) => SHIPS.includes(k)) : -1;
     const name = pick(NAMES);
     let placed = 0;
     kinds.forEach((kind, i) => {

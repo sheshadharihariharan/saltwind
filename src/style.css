@@ -277,3 +277,19 @@ body.home #compass { display: none; }
 #chart .goal.side circle { fill: #9fd8f0; }
 #chart p.goal.side { color: #2f7fa8; font-size: 16px; }
 #chart .lane { stroke: #ffffff; stroke-width: 14px; stroke-dasharray: 10 34; stroke-linecap: round; opacity: .75; }
+/* Narrow screens: six tiles (the Shipyard with the Sailmaker, the Harbour Fund) still fit in a row or two. */
+.tiles { flex-wrap: wrap; }
+@media (max-width: 720px) { .tile { width: 112px; padding: 8px 6px; } .tiles { gap: 8px; } }
+
+/* Panels always fit the screen: above the hull bar and corner buttons, scrolling inside when there's a lot
+   in them, with their buttons (Back, Set sail) pinned to the bottom so they can always be reached. */
+#panel { z-index: 2; padding: calc(8px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom)); }
+.card { max-height: 100%; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.card > .buttons { position: sticky; bottom: -18px; margin: 0 -30px -18px; padding: 10px 30px 18px; background: linear-gradient(rgba(255, 247, 230, 0), #fff7e6 35%); }
+@media (max-height: 420px) {
+  .card { padding: 8px 18px 18px; }
+  .card > .buttons { margin: 0 -18px -18px; padding: 8px 18px 18px; }
+  .card p { font-size: 16px; margin: 2px 0 8px; }
+  .tile { padding: 6px; }
+  .tile span { font-size: 12px; }
+}

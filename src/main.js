@@ -17,6 +17,7 @@ import { createBrazier } from './brazier.js';
 import { createSideStories, SIDE_PEOPLE, QUEST_SPOTS } from './sidequests.js';
 import { createCurrents, LANES } from './currents.js';
 import { createSeaLife } from './life.js';
+import { createHarbour, WORKS, LIVERIES, MARKET_DISCOUNT, liveryIcon } from './harbour.js';
 import { GEAR, gearChoices } from './gear.js';
 import { showSeaChart, hideChart, showTalk, showPanel, hidePanel, gearTile, showGear, showTitle, hideTitle, icon } from './screens.js';
 import { save, store, UPGRADES, MAX_LEVEL, upgradeCost, upgradedStats, shotDamage } from './save.js';
@@ -43,6 +44,9 @@ const DELIVER_HULL = 0.75; // Nix patches your hull to at least this before load
 const FINDS = { near: 32, campCoins: 8, fortCoins: 14, rescue: 5, bottle: 2.5 }; // places to find: how close, what they hold
 const MAP = { near: [120, 260], dig: 14, coins: [16, 22] }; // a bottle's treasure map: how far away the X is, how close to dig it up
 const RESCUE_REWARD = 80; // gold for bringing a stranded sailor home
+const THREAT = { upgrades: 0.7, finished: 0.3, damage: 0.6 }; // how hard the seas get: from shipyard levels, and after the story
+const LEGEND_HIT = 1.5; // a legendary boss hits this much harder
+const END = 17; // the story step once the curse is lifted
 // Stranded sailors you can rescue, and what they say when you bring them to port.
 const SAILORS = [
   { name: 'Gilly the deckhand', face: { skin: 0xf1c9a5, hair: 0x7a4a2a, hat: 'bandana', hatColor: 0x3f6fb0 }, line: 'Three days on that rock with one coconut and my own singing. Thank you, skipper!' },
@@ -102,6 +106,15 @@ const enemies = createEnemies(stage.scene, ocean, fx, loot, {
 const roam = createRoamers(enemies, banner, () => save.story);
 const currents = createCurrents(stage.scene);
 const life = createSeaLife(stage.scene, fx, loot);
+const harbour = createHarbour(stage.scene, ocean);
+harbour.show(save.works);
+
+// How hard the seas are, 0..1: the stronger your ship (shipyard levels) and once the story is done, the tougher
+// enemies get and the harder they hit.
+function threat() {
+  const levels = Object.keys(UPGRADES).reduce((n, u) => n + save.levels[u], 0) / (Object.keys(UPGRADES).length * MAX_LEVEL);
+  return Math.min(1, levels * THREAT.upgrades + (save.story >= END ? THREAT.finished : 0));
+}
 const fog = createFog(stage.scene, locked);
 const brazier = (() => { // on the beach beside Home Harbour's dock, the other side from the lighthouse
   const town = toWorld(...PORTS.home.at), d = toWorld(0, 1);
@@ -147,6 +160,7 @@ function hitPlayer(x, y, z) {
 // Anything that damages us: a flash, a crunch and a shake.
 function hurtPlayer(amount, x, y, z) {
   if (p.sinking >= 0) return;
+  amount *= (1 + THREAT.damage * threat()) * (fight?.legend ? LEGEND_HIT : 1); // tougher seas, legendary bosses
   fx.shipHit(x, y, z);
   sfx.hurt();
   shake = 0.35;
@@ -206,6 +220,8 @@ function placeAtPort(id, hp) {
 
 // The ship's stats: shipyard upgrades, then each piece of gear. Keeps the hull's damage.
 function fitShip() {
+  enemies.setThreat(threat());
+  ship.setLook(LIVERIES[save.livery].look);
   const hp = p.hp;
   ship.resetGear();
   Object.assign(ship.stats, upgradedStats(PLAYER_STATS));
@@ -260,6 +276,7 @@ function advance() {
   }
   fog.refresh();
   showGoal();
+  enemies.setThreat(threat()); // the curse lifted: the seas get rougher
   keep();
 }
 
@@ -332,17 +349,22 @@ function celebrate() {
 const relics = () => save.bosses.filter((id) => id !== 'kraken').length; // the Kraken's heart isn't one of the four
 
 // Boss lairs: sail into the one the story points at and the rocks rise around you and the boss.
+// Once the story is over, each boss can be fought again as a legend: twice as tough, hitting harder,
+// for a set of legendary sails.
+const legends = () => (save.story >= END ? Object.keys(LAIRS).filter((id) => !save.legends.includes(id)) : []);
+const legendName = (id) => LAIRS[id].title[0].replace(/^The /, 'The Legendary ');
 function checkLairs(e, n) {
-  const id = STEPS[save.story].boss;
-  if (!id || fight) return;
-  const lair = LAIRS[id];
-  if (Math.hypot(lair.at[0] - e, lair.at[1] - n) > LAIR_ENTER) return;
-  const w = toWorld(...lair.at);
-  fight = { id, won: null };
+  if (fight) return;
+  const story = STEPS[save.story].boss;
+  const id = [...(story ? [story] : []), ...legends()].find((l) => Math.hypot(LAIRS[l].at[0] - e, LAIRS[l].at[1] - n) < LAIR_ENTER);
+  if (!id) return;
+  const lair = LAIRS[id], w = toWorld(...lair.at), legend = id !== story;
+  fight = { id, won: null, legend };
   enemies.clear();
+  enemies.setLegend(legend);
   ocean.raiseFence(w.x, w.z);
   enemies.summonBoss(lair.boss, w.x, w.z);
-  banner(...lair.title);
+  banner(legend ? legendName(id) : lair.title[0], legend ? 'Twice as tough. Good luck!' : lair.title[1]);
   barks.length = 0;
   bark(lair.hint);
   fight.lines = lair.lines.slice(); // [health left, line], said as the boss gets that low
@@ -373,10 +395,20 @@ function updateFight(dt) {
     const lair = LAIRS[fight.id];
     fight.won = 0;
     barks.length = 0;
-    banner(lair.beaten, `You found ${lair.relic}!`);
-    save.bosses.push(fight.id);
-    advance();
     setMusic('calm');
+    enemies.setLegend(false);
+    if (fight.legend) { // a legend beaten: its sails are yours
+      const sails = Object.keys(LIVERIES).find((l) => LIVERIES[l].legend === fight.id);
+      save.legends.push(fight.id);
+      save.liveries.push(sails);
+      banner(`Legendary ${lair.beaten}`, `You won the ${LIVERIES[sails].name} sails! The Sailmaker can fit them`);
+      sfx.victory();
+      keep();
+    } else {
+      banner(lair.beaten, `You found ${lair.relic}!`);
+      save.bosses.push(fight.id);
+      advance();
+    }
   } else if (fight.won !== null) {
     fight.won += dt;
     if (fight.won > 4) {
@@ -441,19 +473,21 @@ function openPort(id) {
   loot.clear();
   save.lastPort = id;
   keep();
-  const missing = Math.ceil(p.maxHp - p.hp), fixable = Math.min(missing, Math.floor(gold / PRICE.repairPerHp));
-  const cost = Math.ceil(fixable * PRICE.repairPerHp);
+  const free = id === 'home' && save.works.includes('drydock'); // the dry dock repairs for nothing
+  const missing = Math.ceil(p.maxHp - p.hp), fixable = free ? missing : Math.min(missing, Math.floor(gold / PRICE.repairPerHp));
+  const cost = free ? 0 : Math.ceil(fixable * PRICE.repairPerHp);
   showPanel({
     title: PORTS[id].name,
     text: `Hull <b>${Math.ceil(p.hp)} / ${p.maxHp}</b> · Gold <b>${gold}</b>`,
     tiles: [
-      { icon: REPAIR_ICON, name: 'Repair', text: missing ? `+${fixable} hull` : 'The hull is fine', price: missing ? `${cost} gold` : null,
+      { icon: REPAIR_ICON, name: 'Repair', text: missing ? `+${fixable} hull` : 'The hull is fine', price: missing ? (free ? 'Free (dry dock)' : `${cost} gold`) : null,
         disabled: !fixable, onClick: () => { setGold(gold - cost); repair(fixable); openPort(id); } },
       { icon: icon('gear'), name: 'Gear shop', text: `${SLOTS} slots of ship gear`, onClick: () => { sfx.click(); openShop(id); } },
       { icon: `<svg viewBox="0 0 24 24">${UPGRADES.hull.icon}</svg>`, name: 'Shipyard', text: 'Upgrades that last for good',
         onClick: () => { sfx.click(); openShipyard(id); } },
       { icon: icon('chart'), name: 'Sail to…', text: travelTo(id) ? 'Any port you have found' : 'Find more ports first',
         disabled: !travelTo(id), onClick: () => { sfx.click(); openTravel(id); } },
+      ...(id === 'home' ? [{ icon: icon('port'), name: 'Harbour Fund', text: 'Rebuild Home Harbour', onClick: () => { sfx.click(); openFund(); } }] : []),
     ],
     buttons: [{ label: 'Set sail', onClick: () => { sfx.click(); hidePanel(); mode = 'sea'; } }],
   });
@@ -465,12 +499,13 @@ const back = (id) => [{ label: 'Back', quiet: true, onClick: () => { sfx.click()
 // Three pieces of gear for sale, and any gear waiting in your hold (free to fit).
 // With every slot full, a new piece swaps out one you pick, which goes into the hold.
 function openShop(id, forSale = gearChoices(new Set([...gear, ...save.hold]), 3)) {
+  const price = Math.round(PRICE.gear * (id === 'home' && save.works.includes('market') ? MARKET_DISCOUNT : 1)); // the market's cheaper
   showPanel({
     title: 'Gear shop',
     text: `Gold <b>${gold}</b> · Slots used <b>${gear.size} / ${SLOTS}</b>${save.hold.length ? ' · In your hold: tap to fit' : ''}`,
     tiles: [
       ...save.hold.map((g) => gearTile(g, { price: 'In your hold', onClick: () => fit(g, true) })),
-      ...forSale.filter((g) => !gear.has(g) && !save.hold.includes(g)).map((g) => gearTile(g, { price: PRICE.gear, disabled: gold < PRICE.gear, onClick: () => fit(g, false) })),
+      ...forSale.filter((g) => !gear.has(g) && !save.hold.includes(g)).map((g) => gearTile(g, { price, disabled: gold < price, onClick: () => fit(g, false) })),
     ],
     buttons: back(id),
   });
@@ -480,7 +515,7 @@ function openShop(id, forSale = gearChoices(new Set([...gear, ...save.hold]), 3)
   }
   function take(g, held, out) {
     if (held) save.hold.splice(save.hold.indexOf(g), 1);
-    else setGold(gold - PRICE.gear);
+    else setGold(gold - price);
     if (out) { gear.delete(out); save.hold.push(out); }
     gear.add(g);
     fitShip();
@@ -518,8 +553,56 @@ function openShipyard(id, says = p.hp < p.maxHp * 0.3 ? COB.wrecked : '') {
           openShipyard(id, COB[u] ?? '');
         },
       };
-    }),
+    }).concat([{ icon: liveryIcon(save.livery), name: 'Sailmaker', text: 'New colours for your ship', onClick: () => { sfx.click(); openSails(id); } }]),
     buttons: back(id),
+  });
+}
+
+// The Sailmaker: buy a livery (new ship colours) or fit one you own. Legendary ones are won from legendary bosses.
+function openSails(id) {
+  showPanel({
+    title: 'Sailmaker',
+    text: `Gold <b>${gold}</b>`,
+    tiles: Object.entries(LIVERIES).filter(([l, v]) => !v.legend || save.liveries.includes(l)).map(([l, v]) => {
+      const owned = save.liveries.includes(l), on = save.livery === l;
+      return {
+        icon: liveryIcon(l), name: v.name, text: on ? 'On your ship' : owned ? 'Tap to fit' : v.legend ? 'Legendary' : 'New colours',
+        price: owned ? null : v.price, disabled: on || (!owned && gold < v.price),
+        onClick: () => {
+          if (!owned) { setGold(gold - v.price); save.liveries.push(l); }
+          save.livery = l;
+          ship.setLook(v.look);
+          sfx.buy();
+          keep();
+          openSails(id);
+        },
+      };
+    }),
+    buttons: [{ label: 'Back', quiet: true, onClick: () => { sfx.click(); openShipyard(id); } }],
+  });
+}
+
+// The Harbour Fund: spend gold to rebuild Home Harbour, one project at a time.
+function openFund() {
+  showPanel({
+    title: 'Harbour Fund',
+    text: `Gold <b>${gold}</b> · Mara: "Every coin goes into the town, skipper. You'll see it when you sail in."`,
+    tiles: Object.entries(WORKS).map(([w, work]) => {
+      const done = save.works.includes(w);
+      return {
+        icon: icon('port'), name: work.name, text: work.text, price: done ? 'Built' : work.price, disabled: done || gold < work.price,
+        onClick: () => {
+          setGold(gold - work.price);
+          save.works.push(w);
+          harbour.show(save.works);
+          banner(`${work.name} built!`, 'Home Harbour grows');
+          sfx.victory();
+          keep();
+          openFund();
+        },
+      };
+    }),
+    buttons: back('home'),
   });
 }
 
@@ -542,6 +625,7 @@ function sunk() {
   sides.playerSunk();
   if (fight) { // the boss stays in its lair; try again later
     barks.length = 0;
+    enemies.setLegend(false);
     ocean.lowerFence();
     fight = null;
     setMusic('calm');
@@ -663,7 +747,9 @@ function openChart() {
   sfx.click();
   const m = toMap(p.x, p.z), dir = toMap(Math.cos(p.heading), Math.sin(p.heading));
   showSeaChart({ seen: seen.join(''), N: SEEN, ports: save.ports, ship: { ...m, heading: Math.atan2(dir.e, dir.n) }, isOpen,
-    goals: aims().map((a) => ({ text: a.text, at: [a.e, a.n], side: !!a.side, mark: a.mark })), relics: relics(), lanes: LANES }, () => {
+    goals: [...aims().map((a) => ({ text: a.text, at: [a.e, a.n], side: !!a.side, mark: a.mark })),
+      ...legends().map((id) => ({ text: `${legendName(id)} at ${LAIRS[id].name}`, at: LAIRS[id].at, side: true, mark: '★' }))],
+    relics: relics(), lanes: LANES }, () => {
     sfx.click();
     hideChart();
     mode = 'sea';
@@ -810,6 +896,7 @@ function frame(dt) {
   fogNote = Math.max(0, fogNote - dt);
   fog.update(p.x, p.z, time);
   currents.update(p.x, p.z, time);
+  harbour.update(time);
   brazier.update(time, flamesLit());
   updateBarks(dt);
 

@@ -38,7 +38,9 @@ const DAMAGE = { shell: 12, ram: 10, mine: 15 };
 // Shark timings in seconds: aiming (red strip showing), the charge, and resting after a bite or a miss.
 const SHARK = { aim: 1.5, charge: 1.2, restBite: 3.5, restMiss: 3.2 };
 const BLAST = 2.8; // a mine hurts everything this close
-const CRATE_CHANCE = 0.35; // a sunk enemy leaves a repair crate this often
+const CRATE_CHANCE = 0.35; // a sunk enemy leaves a repair crate this often (less as the seas get harder)
+const THREAT = { hp: 1, crates: 0.5 }; // at full threat (0..1, see setThreat): this much more health, this much fewer crates
+const LEGEND = 0.5; // a legendary boss takes only this much of each hit (so twice the health)
 
 const STING = { damage: 5, slow: 1.5, reach: 1.5, every: 2 }; // a jellyfish: damage, seconds it slows you, how close, how often
 const PUFF = { near: 4.5, swell: 1, damage: 10, rest: 2.5 }; // a pufferfish: puffs up when this close, for this long
@@ -83,7 +85,7 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
   let boss = null; // the Kraken or the Crab King, while it's being fought
   const bars = document.getElementById('bars');
   const mines = createMines(scene, fx, (x, z) => blast(x, z, DAMAGE.mine, BLAST));
-  let player = { x: 0, z: 0 }, now = 0;
+  let player = { x: 0, z: 0 }, now = 0, threat = 0, legend = false;
 
   // An explosion: hurts the player and every enemy within `radius`.
   function blast(x, z, amount, radius) {
@@ -212,6 +214,7 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
   function place(kind, x, z, heading) {
     const body = KINDS[kind].make();
     body.reset(x, z, heading);
+    body.state.hp = body.state.maxHp = body.state.maxHp * (1 + THREAT.hp * threat); // tougher seas
     if (kind === 'shark' || kind === 'angler') body.state.under = true;
     const bar = document.createElement('div');
     bar.className = 'ebar';
@@ -251,8 +254,8 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
         loot.drop(s.x, s.z, e.bounty / 5);
         api.bounty?.(e.elite, e.bounty);
       }
-      // A repair crate: sometimes, and always from the last enemy left afloat.
-      if (Math.random() < CRATE_CHANCE || alive() === 0) loot.crate(s.x, s.z);
+      // A repair crate: sometimes, and always from the last enemy left afloat if your hull is below half.
+      if (Math.random() < CRATE_CHANCE * (1 - THREAT.crates * threat) || (alive() === 0 && player.hp < player.maxHp / 2)) loot.crate(s.x, s.z);
       if (e.kind === 'shark') e.body.warn(false);
     }
   }
@@ -721,7 +724,7 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
 
   // A player's cannonball at (x, y, z): damage the enemy or set off the mine it touches. Returns true on a hit.
   function hitAt(x, y, z, amount) {
-    if (boss?.hitAt(x - boss.cx, y, z - boss.cz, amount)) return true;
+    if (boss?.hitAt(x - boss.cx, y, z - boss.cz, amount * (legend ? LEGEND : 1))) return true;
     const e = list.find((e) => !e.hidden && e.body.touches(x, y, z));
     if (e) {
       if (gear.has('chain')) e.slow = SLOW;
@@ -775,5 +778,9 @@ export function createEnemies(scene, world, fx, loot, api, gear) {
 
   // An enemy standing at (x, z) (a camp or fort's tower).
   const placeAt = (kind, x, z) => place(kind, x, z, 0);
-  return { spawn, placeAt, remove: drop, update, hitAt, clear, disarm: mines.clear, alive, summonBoss, bossBeaten, list };
+  // How hard the seas are, 0..1: new enemies get more health and drop fewer crates.
+  const setThreat = (t) => { threat = t; };
+  // A legendary rematch: the boss shrugs off half of every hit.
+  const setLegend = (on) => { legend = on; };
+  return { spawn, placeAt, remove: drop, update, hitAt, clear, disarm: mines.clear, alive, summonBoss, bossBeaten, list, setThreat, setLegend };
 }
